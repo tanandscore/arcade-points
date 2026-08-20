@@ -1,0 +1,73 @@
+import "./globals.css";
+import { getGames } from "@/lib/games";
+
+const FALLBACK_DESCRIPTION =
+  "Play free browser games — reflex, puzzle, word, strategy, racing, and arcade — and climb real leaderboards. Sign up free, no downloads.";
+
+export async function generateMetadata() {
+  const games = await getGames();
+  const description = games.length
+    ? `Play ${games.length} browser games free — reflex, puzzle, word, strategy, racing, and arcade — and climb real leaderboards. Sign up free, no downloads.`
+    : FALLBACK_DESCRIPTION;
+  const title = "Tap & Score — Free Online Games & Leaderboards | India's Arcade";
+
+  return {
+    metadataBase: new URL("https://tapandscore.com"),
+    title: {
+      default: title,
+      template: "%s · Tap & Score",
+    },
+    description,
+    keywords: [
+      "free online games",
+      "free online games india",
+      "browser games",
+      "arcade games",
+      "leaderboard games",
+      "play games online free",
+      "reflex games",
+      "puzzle games",
+      "racing games online",
+      "strategy games online",
+    ],
+    alternates: { canonical: "/" },
+    openGraph: {
+      title,
+      description,
+      url: "https://tapandscore.com",
+      siteName: "Tap & Score",
+      type: "website",
+      locale: "en_IN",
+    },
+    twitter: {
+      card: "summary_large_image",
+      title,
+      description,
+    },
+    robots: { index: true, follow: true },
+  };
+}
+
+const WEBSITE_JSON_LD = {
+  "@context": "https://schema.org",
+  "@type": "WebSite",
+  name: "Tap & Score",
+  url: "https://tapandscore.com",
+  description: FALLBACK_DESCRIPTION,
+  inLanguage: "en",
+};
+
+export default function RootLayout({ children }) {
+  return (
+    <html lang="en">
+      <head>
+        <script
+          type="application/ld+json"
+          // eslint-disable-next-line react/no-danger
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(WEBSITE_JSON_LD) }}
+        />
+      </head>
+      <body className="ap-scanlines bg-bgDeep text-textLight">{children}</body>
+    </html>
+  );
+}
