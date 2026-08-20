@@ -1,0 +1,14 @@
+name = "arcade-points"
+main = ".open-next/worker.js"
+compatibility_date = "2026-08-19"
+compatibility_flags = ["nodejs_compat"]
+
+[assets]
+directory = ".open-next/assets"
+binding = "ASSETS"
+
+# Environment variables (Supabase URL/keys, Razorpay keys, site URL) are
+# NOT set here — set them as "Secrets" in the Cloudflare dashboard under
+# Workers & Pages -> arcade-points -> Settings -> Variables and Secrets.
+# Keeping them out of this file means they never end up committed to
+# GitHub by accident.
