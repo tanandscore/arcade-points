@@ -20,7 +20,7 @@ minutes. You will only ever copy/paste — no terminal commands needed.
 
 ## Step 2 — Create your database (Supabase)
 
-1. Go to [supabase.com](https://supabase.com) → sign up (free tier is fine).
+1. Go to [supabase.com](https://supabase.com) → sign up (free tier is fine)..
 2. Click **New project**. Pick any name and password (save the password somewhere). **For Region, choose Mumbai (ap-south-1)** — this keeps your database close to your Indian users, so the site feels fast. Wait ~2 minutes for it to spin up.
 3. In the left sidebar, click the **SQL Editor** icon → **New query**.
 4. Open the file `supabase/schema.sql` from this project, copy its entire contents, paste into the SQL editor, and click **Run**. This creates your accounts table, scores table, and leaderboard security rules.
