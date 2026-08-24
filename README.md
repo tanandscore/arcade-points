@@ -14,7 +14,7 @@ minutes. You will only ever copy/paste — no terminal commands needed.
 2. Click the **+** in the top right → **New repository**. Name it `arcade-points`. Leave it Public or Private, your choice. Click **Create repository**.
 3. On the next page, click **uploading an existing file**.
 4. Drag this entire `arcade-points` folder's contents into the browser window (drag all the files/folders, not the outer folder itself).
-5. Scroll down, click **Commit changes**.
+5. Scroll down, click **Commit changes**..
 
 ---
 
