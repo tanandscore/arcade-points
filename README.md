@@ -3,7 +3,7 @@
 This folder is a complete, working website: accounts, 14 games, points,
 leaderboards, a public landing page, basic SEO, and one paid game
 unlocked through Razorpay (built for Indian users — UPI, cards,
-netbanking, wallets). Follow these steps in order. Total time: ~20–30
+netbanking, wallets). Follow these steps in or,der. Total time: ~20–30
 minutes. You will only ever copy/paste — no terminal commands needed.
 
 ---
