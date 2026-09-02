@@ -9,7 +9,7 @@ Three things make this safe:
 
 1. **Your database and accounts live in Supabase, not in Cloudflare.**
    Hosting only serves the website's pages and runs its API routes —
-   it never stores any data. Moving hosts never touches a single user
+   it never stores any data. Moving hosts never touches a single use...r
    account, score, or purchase record.
 
 2. **The code has no Cloudflare-only parts.** Everything under `app/`,
