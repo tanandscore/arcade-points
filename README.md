@@ -3,14 +3,14 @@
 This folder is a complete, working website: accounts, 14 games, points,
 leaderboards, a public landing page, basic SEO, and one paid game
 unlocked through Razorpay (built for Indian users — UPI, cards,
-netbanking, wallets). Follow these steps in order. Total time: ~20–30
-minutes. You will only ever copy/paste — no terminal commands needed.
+netbanking, wallets). Follow these steps in order. Total time: ~20–30.
+minutes. You will only ever copy/paste — no terminal commands needed..
 
 ---
 
 ## Step 1 — Put the code on GitHub
 
-1. Go to [github.com](https://github.com) and create a free account if you don't have one.
+1. Go to [github.com](https://github.com) and create a free account if you don't have one..
 2. Click the **+** in the top right → **New repository**. Name it `arcade-points`. Leave it Public or Private, your choice. Click **Create repository**.
 3. On the next page, click **uploading an existing file**.
 4. Drag this entire `arcade-points` folder's contents into the browser window (drag all the files/folders, not the outer folder itself).
