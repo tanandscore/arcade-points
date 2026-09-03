@@ -85,10 +85,10 @@ export default async function TournamentsPage() {
       <Navbar username={username} points={0} isAdmin={isAdmin} />
       <div className="max-w-3xl mx-auto px-4 sm:px-6 py-12">
         <h1 className="font-pixel text-lg text-textLight mb-2">TOURNAMENTS</h1>
-        <p className="text-textDim text-sm mb-2">Weekly and monthly competitive events. Sign up free to take part.</p>
+        <p className="text-textDim text-sm mb-2">Weekly and monthly competitive events.</p>
         <p className="font-mono text-[11px] text-accentAmber mb-6">
-          👑 Tournament standings are a Power Pass / Legend Pass perk — an active subscription is needed for your
-          scores to count toward the leaderboard.
+          👑 Playing tournament games requires an active Power Pass / Legend Pass subscription — anyone can browse
+          tournaments and see standings for free.
         </p>
 
         {active.filter((t) => t.announcement).map((t) => (
