@@ -67,11 +67,11 @@ export default function WrathScene3D({ mapW, mapH, temple, altar, championsRef, 
 
     const composer = new EffectComposer(renderer);
     composer.addPass(new RenderPass(scene, camera));
-    composer.addPass(new UnrealBloomPass(new THREE.Vector2(width, height), 0.85, 0.5, 0.15));
+    composer.addPass(new UnrealBloomPass(new THREE.Vector2(width, height), 0.35, 0.5, 0.5));
     composer.addPass(new OutputPass());
 
-    scene.add(new THREE.AmbientLight(0x4a3a6a, 0.5));
-    const moon = new THREE.DirectionalLight(0x8ea8ff, 0.6);
+    scene.add(new THREE.AmbientLight(0x4a3a6a, 0.7));
+    const moon = new THREE.DirectionalLight(0x8ea8ff, 0.7);
     moon.position.set(-5, 12, 4);
     moon.castShadow = true;
     moon.shadow.mapSize.set(1024, 1024);
@@ -81,10 +81,36 @@ export default function WrathScene3D({ mapW, mapH, temple, altar, championsRef, 
     moon.shadow.camera.bottom = -10;
     scene.add(moon);
 
-    const ground = new THREE.Mesh(
-      new THREE.PlaneGeometry(MAP_W + 4, MAP_H + 4),
-      new THREE.MeshStandardMaterial({ color: 0x2a2438, roughness: 0.95 })
-    );
+    // Real elevation for a war-torn battlefield feel, verified in the
+    // standalone prototype before being ported here — rockier, sharper
+    // variation than Kingdoms of Ash's gentle rolling hills, plus a
+    // subtle central dip where the two sides' forces actually clash.
+    // The height-sampling sign flip (worldZ = MAP_H/2 - localY, not +)
+    // was confirmed correct there by matrix computation before this
+    // integration, not re-derived from scratch here.
+    function terrainHeight(x, z) {
+      const midX = MAP_W / 2, midZ = MAP_H / 2;
+      const distFromCenter = Math.hypot(x - midX, z - midZ) / Math.max(MAP_W, MAP_H);
+      const dip = -0.12 * Math.max(0, 1 - distFromCenter * 2.2);
+      return Math.sin(x * 0.55) * 0.16 + Math.cos(z * 0.48) * 0.16 + Math.sin((x + z) * 0.32) * 0.12 + dip;
+    }
+    const segs = 44;
+    const groundGeo = new THREE.PlaneGeometry(MAP_W + 4, MAP_H + 4, segs, Math.round(segs * (MAP_H / MAP_W)));
+    const gpos = groundGeo.getAttribute("position");
+    const gcolors = [];
+    const lowColor = new THREE.Color(0x1e1830);
+    const highColor = new THREE.Color(0x342a48);
+    for (let i = 0; i < gpos.count; i++) {
+      const worldX = gpos.getX(i) + MAP_W / 2, worldZ = MAP_H / 2 - gpos.getY(i);
+      const h = terrainHeight(worldX, worldZ);
+      gpos.setZ(i, h);
+      const t = THREE.MathUtils.clamp((h + 0.3) / 0.6, 0, 1);
+      const c = lowColor.clone().lerp(highColor, t);
+      gcolors.push(c.r, c.g, c.b);
+    }
+    groundGeo.setAttribute("color", new THREE.Float32BufferAttribute(gcolors, 3));
+    groundGeo.computeVertexNormals();
+    const ground = new THREE.Mesh(groundGeo, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.95 }));
     ground.rotation.x = -Math.PI / 2;
     ground.position.set(MAP_W / 2, 0, MAP_H / 2);
     ground.receiveShadow = true;
@@ -133,30 +159,87 @@ export default function WrathScene3D({ mapW, mapH, temple, altar, championsRef, 
       scene.add(light);
     }
 
-    // Temple — verified in the standalone Step 1 prototype at these
-    // exact proportions before being carried over here.
+    // Temple — genuinely rebuilt for the 10x pass, not just enlarged:
+    // a real two-tier stepped stylobate, a full peristyle of columns
+    // on all four sides (not just front/back pairs), a proper
+    // pediment with a raised central emblem, an eternal flame altar
+    // at the top of the steps, and four corner torches plus the
+    // center one. Verified in the standalone prototype, including a
+    // real over-exposure bug found there: the extra torches blew out
+    // the columns to near-white at close range until bloom strength/
+    // threshold and light intensities were retuned and re-verified —
+    // those exact corrected values are used here, not the originals.
+    const tcH = terrainHeight(TEMPLE.x, TEMPLE.z);
     const tR = TEMPLE.r;
-    addMesh(new THREE.BoxGeometry(tR * 4.2, tR * 0.3, tR * 2.8), 0xbcae97, TEMPLE.x, tR * 0.15, TEMPLE.z, { roughness: 0.55 });
-    for (let i = 0; i < 6; i++) {
-      const cx = TEMPLE.x - tR * 1.7 + ((tR * 3.4) / 5) * i;
-      addMesh(new THREE.CylinderGeometry(tR * 0.13, tR * 0.15, tR * 1.6, 12), 0xf7f2e6, cx, tR * 1.05, TEMPLE.z - tR, { roughness: 0.35 });
-      addMesh(new THREE.CylinderGeometry(tR * 0.13, tR * 0.15, tR * 1.6, 12), 0xf7f2e6, cx, tR * 1.05, TEMPLE.z + tR, { roughness: 0.35 });
+    addMesh(new THREE.BoxGeometry(tR * 5.2, tR * 0.22, tR * 3.6), 0x8a7a62, TEMPLE.x, tcH + tR * 0.11, TEMPLE.z, { roughness: 0.85 });
+    addMesh(new THREE.BoxGeometry(tR * 4.6, tR * 0.22, tR * 3.0), 0xa89a80, TEMPLE.x, tcH + tR * 0.33, TEMPLE.z, { roughness: 0.75 });
+    addMesh(new THREE.BoxGeometry(tR * 4.2, tR * 0.2, tR * 2.8), 0xbcae97, TEMPLE.x, tcH + tR * 0.54, TEMPLE.z, { roughness: 0.55 });
+    const colXs = [-1.7, -1.02, -0.34, 0.34, 1.02, 1.7];
+    for (const cx of colXs) {
+      addMesh(new THREE.CylinderGeometry(tR * 0.13, tR * 0.15, tR * 1.6, 12), 0xf7f2e6, TEMPLE.x + cx * tR, tcH + tR * 1.44, TEMPLE.z - tR * 1.3, { roughness: 0.35 });
+      addMesh(new THREE.CylinderGeometry(tR * 0.13, tR * 0.15, tR * 1.6, 12), 0xf7f2e6, TEMPLE.x + cx * tR, tcH + tR * 1.44, TEMPLE.z + tR * 1.3, { roughness: 0.35 });
     }
-    addMesh(new THREE.BoxGeometry(tR * 4.4, tR * 0.18, tR * 2.4), 0xbcae97, TEMPLE.x, tR * 1.95, TEMPLE.z, { roughness: 0.5 });
-    const pediment = addMesh(new THREE.ConeGeometry(tR * 2.4, tR * 1.0, 4), 0xb84a26, TEMPLE.x, tR * 2.6, TEMPLE.z, { roughness: 0.6 });
+    const colZs = [-0.85, 0, 0.85];
+    for (const cz of colZs) {
+      addMesh(new THREE.CylinderGeometry(tR * 0.13, tR * 0.15, tR * 1.6, 12), 0xf7f2e6, TEMPLE.x - tR * 1.9, tcH + tR * 1.44, TEMPLE.z + cz * tR, { roughness: 0.35 });
+      addMesh(new THREE.CylinderGeometry(tR * 0.13, tR * 0.15, tR * 1.6, 12), 0xf7f2e6, TEMPLE.x + tR * 1.9, tcH + tR * 1.44, TEMPLE.z + cz * tR, { roughness: 0.35 });
+    }
+    addMesh(new THREE.BoxGeometry(tR * 4.6, tR * 0.18, tR * 2.9), 0xbcae97, TEMPLE.x, tcH + tR * 2.34, TEMPLE.z, { roughness: 0.5 });
+    const pediment = addMesh(new THREE.ConeGeometry(tR * 2.6, tR * 1.05, 4), 0xb84a26, TEMPLE.x, tcH + tR * 3.0, TEMPLE.z, { roughness: 0.6 });
     pediment.rotation.y = Math.PI / 4;
-    pediment.scale.set(1, 1, 0.6);
-    torch(TEMPLE.x - tR * 1.2, tR * 1.2, TEMPLE.z + tR * 1.7, 0xffaa00, 3.0);
-    torch(TEMPLE.x + tR * 1.2, tR * 1.2, TEMPLE.z + tR * 1.7, 0xffaa00, 3.0);
+    pediment.scale.set(1, 1, 0.62);
+    addMesh(new THREE.OctahedronGeometry(tR * 0.22), 0xffd23f, TEMPLE.x, tcH + tR * 2.95, TEMPLE.z, { roughness: 0.3, metalness: 0.4 });
+    addMesh(new THREE.CylinderGeometry(tR * 0.28, tR * 0.32, tR * 0.5, 10), 0x9a8c72, TEMPLE.x, tcH + tR * 0.79, TEMPLE.z, { roughness: 0.6 });
+    torch(TEMPLE.x, tcH + tR * 1.15, TEMPLE.z, 0xffaa00, 2.6 * 0.4);
+    torch(TEMPLE.x - tR * 1.9, tcH + tR * 1.2, TEMPLE.z + tR * 1.9, 0xffaa00, 3.0 * 0.4);
+    torch(TEMPLE.x + tR * 1.9, tcH + tR * 1.2, TEMPLE.z + tR * 1.9, 0xffaa00, 3.0 * 0.4);
+    torch(TEMPLE.x - tR * 1.9, tcH + tR * 1.2, TEMPLE.z - tR * 1.9, 0xffaa00, 2.4 * 0.4);
+    torch(TEMPLE.x + tR * 1.9, tcH + tR * 1.2, TEMPLE.z - tR * 1.9, 0xffaa00, 2.4 * 0.4);
 
-    // Altar
+    // Enemy Altar — six jagged dark spires instead of four plain
+    // pillars, a raised cracked platform, and a toppled broken column
+    // implying desecrated ground.
+    const aH = terrainHeight(ALTAR.x, ALTAR.z);
     const aR = ALTAR.r;
-    addMesh(new THREE.CylinderGeometry(aR * 1.3, aR * 1.5, aR * 0.4, 8), 0x241a2e, ALTAR.x, aR * 0.2, ALTAR.z, { roughness: 0.8 });
-    for (let i = 0; i < 4; i++) {
-      const ang = (i / 4) * Math.PI * 2;
-      addMesh(new THREE.BoxGeometry(aR * 0.22, aR * 1.4, aR * 0.22), 0x4a3660, ALTAR.x + Math.cos(ang) * aR * 0.9, aR * 1.1, ALTAR.z + Math.sin(ang) * aR * 0.9, { roughness: 0.6, metalness: 0.15 });
+    addMesh(new THREE.CylinderGeometry(aR * 1.5, aR * 1.7, aR * 0.3, 10), 0x1a1220, ALTAR.x, aH + aR * 0.15, ALTAR.z, { roughness: 0.9 });
+    addMesh(new THREE.CylinderGeometry(aR * 1.2, aR * 1.4, aR * 0.35, 10), 0x241a2e, ALTAR.x, aH + aR * 0.475, ALTAR.z, { roughness: 0.8 });
+    for (let i = 0; i < 6; i++) {
+      const ang = (i / 6) * Math.PI * 2;
+      const spireH = aR * (1.3 + ((i * 17) % 5) / 10);
+      const spire = addMesh(new THREE.ConeGeometry(aR * 0.16, spireH, 7), 0x4a3660, ALTAR.x + Math.cos(ang) * aR * 0.95, aH + spireH * 0.5 + aR * 0.6, ALTAR.z + Math.sin(ang) * aR * 0.95, { roughness: 0.6, metalness: 0.1 });
+      spire.rotation.z = (((i * 23) % 10) / 10 - 0.5) * 0.2;
     }
-    torch(ALTAR.x, aR * 2.0, ALTAR.z, 0x78dcff, 3.2);
+    const brokenCol = addMesh(new THREE.CylinderGeometry(aR * 0.13, aR * 0.15, aR * 1.1, 10), 0x6a5a52, ALTAR.x + aR * 1.6, aH + aR * 0.15, ALTAR.z - aR * 0.6, { roughness: 0.7 });
+    brokenCol.rotation.z = Math.PI / 2.3;
+    torch(ALTAR.x, aH + aR * 1.6, ALTAR.z, 0x78dcff, 3.4 * 0.4);
+
+    // Scattered ancient ruins across the battlefield — broken columns
+    // and rubble, filling in the previously empty middle ground
+    // between the two structures with real environmental storytelling.
+    function ruinColumn(x, z, colHeight, fallen) {
+      const h = terrainHeight(x, z);
+      const col = addMesh(new THREE.CylinderGeometry(0.06, 0.07, colHeight, 8), 0x5a5048, x, h + (fallen ? 0.06 : colHeight / 2), z, { roughness: 0.8 });
+      if (fallen) col.rotation.z = Math.PI / 2;
+    }
+    function rubble(x, z, count) {
+      for (let i = 0; i < count; i++) {
+        const ang = (i / count) * Math.PI * 2;
+        const rx = x + Math.cos(ang) * 0.25, rz = z + Math.sin(ang) * 0.25;
+        const h = terrainHeight(rx, rz);
+        addMesh(new THREE.DodecahedronGeometry(0.08 + (i % 3) * 0.03, 0), 0x4a423a, rx, h + 0.08, rz, { roughness: 0.9 });
+      }
+    }
+    const ruinSpots = [
+      { x: TEMPLE.x + 2.2, z: TEMPLE.z - 1.0, fallen: false },
+      { x: TEMPLE.x + 3.4, z: TEMPLE.z - 2.1, fallen: true },
+      { x: MAP_W / 2, z: MAP_H / 2 + 0.6, fallen: true },
+      { x: MAP_W / 2 - 1.2, z: MAP_H / 2 - 0.4, fallen: false },
+      { x: ALTAR.x - 2.6, z: ALTAR.z + 1.4, fallen: true },
+    ];
+    for (const spot of ruinSpots) {
+      ruinColumn(spot.x, spot.z, 0.9, spot.fallen);
+      rubble(spot.x + 0.15, spot.z + 0.1, 3);
+    }
 
     // Live-tracked pools — a Map keyed by each entity's own real id,
     // so meshes are created once when an entity first appears and
@@ -201,7 +284,12 @@ export default function WrathScene3D({ mapW, mapH, temple, altar, championsRef, 
           championMeshes.set(c.id, mesh);
         }
         mesh.visible = true;
-        mesh.position.set(c.x / SCALE, 0, c.y / SCALE);
+        // Samples the same terrainHeight() function the ground mesh
+        // itself was built from, every frame — champions move
+        // constantly, so their base height has to track wherever
+        // they currently are, not a value computed once at spawn.
+        const cx3 = c.x / SCALE, cz3 = c.y / SCALE;
+        mesh.position.set(cx3, terrainHeight(cx3, cz3), cz3);
       }
 
       // Enemies — a genuinely dynamic set, synced each frame: remove
@@ -216,7 +304,8 @@ export default function WrathScene3D({ mapW, mapH, temple, altar, championsRef, 
           mesh = humanoid(color, 0.8);
           enemyMeshes.set(en.id, mesh);
         }
-        mesh.position.set(en.x / SCALE, 0, en.y / SCALE);
+        const ex3 = en.x / SCALE, ez3 = en.y / SCALE;
+        mesh.position.set(ex3, terrainHeight(ex3, ez3), ez3);
       }
       for (const [id, mesh] of enemyMeshes) {
         if (!liveEnemyIds.has(id)) {
@@ -230,7 +319,9 @@ export default function WrathScene3D({ mapW, mapH, temple, altar, championsRef, 
       }
 
       // Wards — same live-sync pattern as enemies, just a smaller,
-      // capped set.
+      // capped set. Wards are stationary once placed, but still
+      // sampled the same way for consistency and because their
+      // spawn position needs the correct terrain height regardless.
       const liveWardIds = new Set();
       for (const w of wardsRef.current) {
         liveWardIds.add(w.id);
@@ -239,7 +330,8 @@ export default function WrathScene3D({ mapW, mapH, temple, altar, championsRef, 
           mesh = addMesh(new THREE.OctahedronGeometry(0.12), 0xffd23f, 0, 0.15, 0, { metalness: 0.3, roughness: 0.4, emissive: 0xffd23f });
           wardMeshes.set(w.id, mesh);
         }
-        mesh.position.set(w.x / SCALE, 0.15, w.y / SCALE);
+        const wx3 = w.x / SCALE, wz3 = w.y / SCALE;
+        mesh.position.set(wx3, terrainHeight(wx3, wz3) + 0.15, wz3);
       }
       for (const [id, mesh] of wardMeshes) {
         if (!liveWardIds.has(id)) {
@@ -285,5 +377,11 @@ export default function WrathScene3D({ mapW, mapH, temple, altar, championsRef, 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  return <div ref={mountRef} style={{ width: "100%", height: "320px", borderRadius: "8px", overflow: "hidden" }} />;
+  // Fills 100% of whatever its parent container actually is,
+  // deliberately — no fixed height. The parent now controls real
+  // sizing (a small preview panel or the full fullscreen viewport),
+  // and this component's own resize listener already adapts the
+  // camera/renderer to match its container's real clientWidth/
+  // clientHeight, exactly like TitanArena.js's own proven pattern.
+  return <div ref={mountRef} style={{ width: "100%", height: "100%" }} />;
 }
