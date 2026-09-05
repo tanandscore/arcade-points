@@ -460,5 +460,11 @@ export default function KingdomsOfAsh3D({ mapW, mapH, mapRef, buildingsRef, vill
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  return <div ref={mountRef} style={{ width: "100%", height: "320px", borderRadius: "8px", overflow: "hidden" }} />;
+  // Fills 100% of whatever its parent container actually is,
+  // deliberately — no fixed height, matching the same fix already
+  // applied to WrathScene3D.js. The parent now controls real sizing
+  // (a small preview panel or the full fullscreen viewport), and this
+  // component's own resize listener already adapts the camera/
+  // renderer to match its container's real clientWidth/clientHeight.
+  return <div ref={mountRef} style={{ width: "100%", height: "100%" }} />;
 }

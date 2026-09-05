@@ -227,6 +227,7 @@ export default function WrathOfOlympus({ onFinish, accentColor }) {
   const canvasRef = useRef(null);
   const wrapRef = useRef(null);
   const [phase, setPhase] = useState("menu"); // menu | playing | over
+  const [isFullscreen, setIsFullscreen] = useState(false); // tracks the real fullscreen state, so the 3D view and HUD can actually fill the screen when active, not just sit at their normal size inside a fullscreened blank page
   const [difficulty, setDifficulty] = useState("veteran");
   const difficultyRef = useRef("veteran");
   const [outcome, setOutcome] = useState(null); // "victory" | "defeat"
@@ -252,7 +253,7 @@ export default function WrathOfOlympus({ onFinish, accentColor }) {
   const championsRef = useRef([]);
   const wardsRef = useRef([]); // placed defenses — array of { id, x, y, hp, maxHp, lastAttackAt }
   const [placingWard, setPlacingWard] = useState(false); // true while the next map click should place a Ward instead of moving/attacking with the player champion
-  const placingWardRef = useRef(false); // mirrors placingWard, same reasoning as selectedPowerRef below — handleCanvasClick reads this, not the state, to avoid a stale closure
+  const placingWardRef = useRef(false); // mirrors placingWard, same reasoning as selectedPowerRef below — handleWorldClick reads this, not the state, to avoid a stale closure
   const projectilesRef = useRef([]);
   const particlesRef = useRef([]);
   const lightningBoltsRef = useRef([]);
@@ -1151,24 +1152,17 @@ export default function WrathOfOlympus({ onFinish, accentColor }) {
     haptics.select();
   }
 
-  function handleCanvasClick(e) {
-    if (phase !== "playing") return;
-    const rect = canvasRef.current.getBoundingClientRect();
-    const scaleX = MAP_W / rect.width;
-    const scaleY = MAP_H / rect.height;
-    const x = (e.clientX - rect.left) * scaleX;
-    const y = (e.clientY - rect.top) * scaleY;
-    handleWorldClick(x, y);
-  }
-
-  // Extracted from handleCanvasClick above so the exact same,
-  // already-verified targeting logic can be triggered from a
-  // genuinely different input source — the 3D preview's own click
-  // handling (which arrives at these same real game coordinates via
-  // 3D raycasting against the ground plane, then converts back to
-  // this game's real MAP_W/MAP_H pixel space) — without duplicating
-  // a single line of it. Both input paths now call this one
-  // function; only how (x, y) gets computed differs between them.
+  // handleWorldClick — the real, still-used targeting/casting logic,
+  // now driven entirely by the 3D view's own raycasting-based click
+  // handling (its onWorldClick prop). handleCanvasClick, which used
+  // to convert 2D DOM click events into these same coordinates, was
+  // removed here since the 2D canvas is no longer visible or
+  // interactive — kept in the DOM only to drive game state, per the
+  // comment on the hidden canvas element below. The 3D view arrives
+  // at these same real game coordinates via 3D raycasting against
+  // the ground plane, then converts back to this game's real
+  // MAP_W/MAP_H pixel space — without duplicating a single line of
+  // targeting logic.
   function handleWorldClick(x, y) {
     if (placingWardRef.current) {
       // Checked again here, not just when the button was pressed —
@@ -1903,6 +1897,19 @@ export default function WrathOfOlympus({ onFinish, accentColor }) {
     };
   }, []);
 
+  // Tracks real fullscreen state via the browser's own event, rather
+  // than assuming it's active right after requestFullscreen() is
+  // called (that call is async and can be silently rejected) — the
+  // game area only actually resizes to fill the screen once this
+  // fires true.
+  useEffect(() => {
+    function handleFullscreenChange() {
+      setIsFullscreen(!!document.fullscreenElement);
+    }
+    document.addEventListener("fullscreenchange", handleFullscreenChange);
+    return () => document.removeEventListener("fullscreenchange", handleFullscreenChange);
+  }, []);
+
   if (phase === "menu") {
     return (
       <div className="text-center max-w-md mx-auto">
@@ -1969,42 +1976,72 @@ export default function WrathOfOlympus({ onFinish, accentColor }) {
   return (
     <div className="text-center relative" ref={wrapRef}>
       <div
-        className="flex justify-between font-mono text-[11px] mb-2 max-w-[900px] mx-auto flex-wrap gap-2 px-4 py-2.5 rounded-md"
-        style={{
-          background: "linear-gradient(180deg, rgba(18,10,5,0.95), rgba(3,1,1,0.98))",
-          border: "1.5px solid rgba(212,175,55,0.55)",
-        }}
+        className="relative mx-auto overflow-hidden border border-lineColor cursor-crosshair"
+        style={
+          isFullscreen
+            ? { width: "100vw", height: "100vh", borderRadius: 0 }
+            : { width: MAP_W, maxWidth: "94vw", maxHeight: "65vh", aspectRatio: `${MAP_W} / ${MAP_H}`, borderRadius: "0.5rem" }
+        }
       >
-        <span style={{ color: "#f0e6d2" }}>⛩️ Temple: <span style={{ color: templeHpRef.current < TEMPLE.maxHp * 0.3 ? "#ff5a3c" : "#f0e6d2" }}>{hud.templeHp}/{TEMPLE.maxHp}</span></span>
-        <span style={{ color: "#3ee6e0" }}>✨ Faith: {hud.faith}</span>
-        <span style={{ color: "#d4af37" }}>🌊 Wave {hud.wave}/{TOTAL_WAVES} <span style={{ color: "#f0e6d2" }}>· {hud.enemiesLeft} remaining</span></span>
-        <span style={{ color: "#b45cff" }}>🏛️ Altar: {hud.altarHp} <span style={{ color: "#f0e6d2" }}>· {hud.guardiansLeft} guardians</span></span>
-      </div>
-
-      {hud.hydra && (
-        // A real, prominent boss bar — the classic "this is the
-        // fight that matters right now" UX signal, shown in addition
-        // to the smaller bar rendered directly above the Hydra on
-        // the battlefield, not instead of it.
-        <div className="max-w-[500px] mx-auto mb-2 px-3 py-1.5 rounded-md" style={{ background: "rgba(31,107,58,0.25)", border: "1.5px solid #7cff5e" }}>
-          <p className="font-pixel text-[10px] mb-1" style={{ color: "#7cff5e" }}>🐍 HYDRA</p>
-          <div className="w-full h-3 rounded-full overflow-hidden" style={{ background: "#000" }}>
-            <div className="h-full" style={{ width: `${Math.max(0, (hud.hydra.hp / hud.hydra.maxHp) * 100)}%`, background: "#7cff5e" }} />
-          </div>
+        {/* The 3D view is now the real, primary visual — not a
+            preview alongside a 2D canvas. It fills this container
+            completely (100% width/height), and this container itself
+            becomes the actual fullscreen viewport once isFullscreen
+            is true, tracked via the real fullscreenchange event above
+            rather than assumed the moment requestFullscreen() is
+            called. */}
+        <div className="absolute inset-0">
+          <WrathScene3D
+            mapW={MAP_W}
+            mapH={MAP_H}
+            temple={TEMPLE}
+            altar={ENEMY_ALTAR}
+            championsRef={championsRef}
+            enemiesRef={enemiesRef}
+            wardsRef={wardsRef}
+            enemyColors={ENEMY_COLORS_HEX}
+            onWorldClick={handleWorldClick}
+          />
         </div>
-      )}
-
-      <div
-        className="relative mx-auto rounded-lg overflow-hidden border border-lineColor cursor-crosshair"
-        style={{ width: MAP_W, maxWidth: "94vw", maxHeight: "65vh", aspectRatio: `${MAP_W} / ${MAP_H}` }}
-      >
+        {/* The original 2D canvas — kept in the DOM, not removed,
+            specifically because the entire game loop (wave spawning,
+            combat, all state updates) lives inside the same function
+            that also draws to this canvas, and that function exits
+            early if canvasRef.current is ever null. Hiding it via
+            opacity/pointer-events keeps every existing system running
+            exactly as it always has, with zero risk to game logic,
+            while it's simply never seen or clicked. */}
         <canvas
           ref={canvasRef}
           width={MAP_W}
           height={MAP_H}
-          style={{ width: "100%", height: "100%", display: "block" }}
-          onClick={handleCanvasClick}
+          style={{ position: "absolute", top: 0, left: 0, width: "1px", height: "1px", opacity: 0, pointerEvents: "none" }}
+          aria-hidden="true"
         />
+        {/* HUD — now a real overlay on top of the fullscreen 3D view,
+            not a separate stacked element above a small canvas. */}
+        <div
+          className="absolute top-2 left-1/2 -translate-x-1/2 flex justify-between font-mono text-[11px] flex-wrap gap-2 px-4 py-2.5 rounded-md z-10"
+          style={{
+            background: "linear-gradient(180deg, rgba(18,10,5,0.95), rgba(3,1,1,0.98))",
+            border: "1.5px solid rgba(212,175,55,0.55)",
+            maxWidth: "94%",
+          }}
+        >
+          <span style={{ color: "#f0e6d2" }}>⛩️ Temple: <span style={{ color: templeHpRef.current < TEMPLE.maxHp * 0.3 ? "#ff5a3c" : "#f0e6d2" }}>{hud.templeHp}/{TEMPLE.maxHp}</span></span>
+          <span style={{ color: "#3ee6e0" }}>✨ Faith: {hud.faith}</span>
+          <span style={{ color: "#d4af37" }}>🌊 Wave {hud.wave}/{TOTAL_WAVES} <span style={{ color: "#f0e6d2" }}>· {hud.enemiesLeft} remaining</span></span>
+          <span style={{ color: "#b45cff" }}>🏛️ Altar: {hud.altarHp} <span style={{ color: "#f0e6d2" }}>· {hud.guardiansLeft} guardians</span></span>
+        </div>
+
+        {hud.hydra && (
+          <div className="absolute top-16 left-1/2 -translate-x-1/2 max-w-[500px] px-3 py-1.5 rounded-md z-10" style={{ background: "rgba(31,107,58,0.25)", border: "1.5px solid #7cff5e" }}>
+            <p className="font-pixel text-[10px] mb-1" style={{ color: "#7cff5e" }}>🐍 HYDRA</p>
+            <div className="w-full h-3 rounded-full overflow-hidden" style={{ background: "#000" }}>
+              <div className="h-full" style={{ width: `${Math.max(0, (hud.hydra.hp / hud.hydra.maxHp) * 100)}%`, background: "#7cff5e" }} />
+            </div>
+          </div>
+        )}
         {notice && (
           <div className="absolute top-2 left-1/2 -translate-x-1/2 bg-bgDeep/90 px-3 py-1.5 rounded-md">
             <p className="font-mono text-[10px] text-accentAmber">{notice}</p>
@@ -2080,101 +2117,90 @@ export default function WrathOfOlympus({ onFinish, accentColor }) {
             </div>
           </div>
         )}
-      </div>
 
-      {/* Real 3D preview — additive only, verified separately before
-          being wired here. This does not affect gameplay or input in
-          any way; the canvas above still handles 100% of real
-          interaction exactly as it always has. */}
-      <div className="max-w-[900px] mx-auto mt-3 rounded-lg overflow-hidden border border-lineColor">
-        <p className="font-mono text-[10px] px-3 py-1.5" style={{ background: "rgba(120,220,255,0.1)", color: "#78dcff" }}>
-          🔺 3D PREVIEW (BETA) — mirrors the live battle above, doesn&apos;t affect it
-        </p>
-        <WrathScene3D
-          mapW={MAP_W}
-          mapH={MAP_H}
-          temple={TEMPLE}
-          altar={ENEMY_ALTAR}
-          championsRef={championsRef}
-          enemiesRef={enemiesRef}
-          wardsRef={wardsRef}
-          enemyColors={ENEMY_COLORS_HEX}
-          onWorldClick={handleWorldClick}
-        />
+        {/* Controls — real power buttons and the instructions line,
+            now an overlay at the bottom of the same fullscreen
+            container instead of separate elements below a small
+            canvas, per "all game info including controls and HUD
+            should be within that fullscreen". */}
+        <div
+          className="absolute bottom-3 left-1/2 -translate-x-1/2 flex flex-col items-center gap-2 z-10"
+          style={{ maxWidth: "94%" }}
+        >
+          <div
+            className="flex justify-center gap-2.5 p-3 rounded-md flex-wrap"
+            style={{
+              background: "linear-gradient(180deg, rgba(18,10,5,0.95), rgba(3,1,1,0.98))",
+              border: "1.5px solid rgba(212,175,55,0.55)",
+            }}
+          >
+            {unlockedPowers.map((id) => {
+              const power = POWERS[id];
+              const cooldown = hud.powerCooldowns[id] || 0;
+              const onCooldown = cooldown > 0;
+              const affordable = hud.faith >= power.faithCost;
+              const disabled = onCooldown || !affordable;
+              const active = selectedPower === id;
+              return (
+                <button
+                  key={id}
+                  onClick={() => handlePowerButtonClick(id)}
+                  disabled={disabled}
+                  className="font-mono text-[10px] px-4 py-2.5 rounded-md border disabled:opacity-40 flex flex-col items-center transition-all"
+                  style={{
+                    borderColor: active ? power.color : "rgba(212,175,55,0.35)",
+                    color: power.color,
+                    background: active ? `${power.color}22` : "rgba(255,255,255,0.02)",
+                    boxShadow: active ? `0 0 16px ${power.color}80` : "none",
+                  }}
+                >
+                  <span>{power.icon} {power.name}</span>
+                  <span className="text-[9px] mt-0.5" style={{ color: "#a89f91" }}>
+                    {onCooldown ? `${Math.ceil(cooldown / 1000)}s` : `${power.faithCost} faith`}
+                  </span>
+                </button>
+              );
+            })}
+            {(() => {
+              // Same button shape and interaction pattern as a God Power
+              // above (click to arm, click the battlefield to commit) —
+              // one consistent "select then target" interaction for the
+              // whole game, not a second, different control scheme just
+              // for placement.
+              const wardDisabled = hud.faith < WARD_FAITH_COST || hud.wardsCount >= WARD_MAX_COUNT;
+              return (
+                <button
+                  onClick={() => {
+                    if (wardDisabled) return;
+                    const next = !placingWardRef.current;
+                    placingWardRef.current = next;
+                    setPlacingWard(next);
+                    selectedPowerRef.current = null;
+                    setSelectedPower(null);
+                  }}
+                  disabled={wardDisabled}
+                  className="font-mono text-[10px] px-4 py-2.5 rounded-md border disabled:opacity-40 flex flex-col items-center transition-all"
+                  style={{
+                    borderColor: placingWard ? "#ffd23f" : "rgba(212,175,55,0.35)",
+                    color: "#ffd23f",
+                    background: placingWard ? "#ffd23f22" : "rgba(255,255,255,0.02)",
+                    boxShadow: placingWard ? "0 0 16px #ffd23f80" : "none",
+                  }}
+                >
+                  <span>◆ Place Ward</span>
+                  <span className="text-[9px] mt-0.5" style={{ color: "#a89f91" }}>
+                    {hud.wardsCount >= WARD_MAX_COUNT ? `${WARD_MAX_COUNT}/${WARD_MAX_COUNT} placed` : `${WARD_FAITH_COST} faith`}
+                  </span>
+                </button>
+              );
+            })()}
+          </div>
+          <p className="font-mono text-[10px]" style={{ color: "#a89f91" }}>
+            Click a power or Place Ward, then click the battlefield to target it — Ares casts instantly. Click an enemy
+            directly to send your Champion to attack it.
+          </p>
+        </div>
       </div>
-
-      <div
-        className="flex justify-center gap-2.5 mt-3 max-w-[900px] mx-auto p-3 rounded-md flex-wrap"
-        style={{
-          background: "linear-gradient(180deg, rgba(18,10,5,0.95), rgba(3,1,1,0.98))",
-          border: "1.5px solid rgba(212,175,55,0.55)",
-        }}
-      >
-        {unlockedPowers.map((id) => {
-          const power = POWERS[id];
-          const cooldown = hud.powerCooldowns[id] || 0;
-          const onCooldown = cooldown > 0;
-          const affordable = hud.faith >= power.faithCost;
-          const disabled = onCooldown || !affordable;
-          const active = selectedPower === id;
-          return (
-            <button
-              key={id}
-              onClick={() => handlePowerButtonClick(id)}
-              disabled={disabled}
-              className="font-mono text-[10px] px-4 py-2.5 rounded-md border disabled:opacity-40 flex flex-col items-center transition-all"
-              style={{
-                borderColor: active ? power.color : "rgba(212,175,55,0.35)",
-                color: power.color,
-                background: active ? `${power.color}22` : "rgba(255,255,255,0.02)",
-                boxShadow: active ? `0 0 16px ${power.color}80` : "none",
-              }}
-            >
-              <span>{power.icon} {power.name}</span>
-              <span className="text-[9px] mt-0.5" style={{ color: "#a89f91" }}>
-                {onCooldown ? `${Math.ceil(cooldown / 1000)}s` : `${power.faithCost} faith`}
-              </span>
-            </button>
-          );
-        })}
-        {(() => {
-          // Same button shape and interaction pattern as a God Power
-          // above (click to arm, click the battlefield to commit) —
-          // one consistent "select then target" interaction for the
-          // whole game, not a second, different control scheme just
-          // for placement.
-          const wardDisabled = hud.faith < WARD_FAITH_COST || hud.wardsCount >= WARD_MAX_COUNT;
-          return (
-            <button
-              onClick={() => {
-                if (wardDisabled) return;
-                const next = !placingWardRef.current;
-                placingWardRef.current = next;
-                setPlacingWard(next);
-                selectedPowerRef.current = null;
-                setSelectedPower(null);
-              }}
-              disabled={wardDisabled}
-              className="font-mono text-[10px] px-4 py-2.5 rounded-md border disabled:opacity-40 flex flex-col items-center transition-all"
-              style={{
-                borderColor: placingWard ? "#ffd23f" : "rgba(212,175,55,0.35)",
-                color: "#ffd23f",
-                background: placingWard ? "#ffd23f22" : "rgba(255,255,255,0.02)",
-                boxShadow: placingWard ? "0 0 16px #ffd23f80" : "none",
-              }}
-            >
-              <span>◆ Place Ward</span>
-              <span className="text-[9px] mt-0.5" style={{ color: "#a89f91" }}>
-                {hud.wardsCount >= WARD_MAX_COUNT ? `${WARD_MAX_COUNT}/${WARD_MAX_COUNT} placed` : `${WARD_FAITH_COST} faith`}
-              </span>
-            </button>
-          );
-        })()}
-      </div>
-      <p className="font-mono text-[10px] mt-3" style={{ color: "#a89f91" }}>
-        Click a power or Place Ward, then click the battlefield to target it — Ares casts instantly. Click an enemy
-        directly to send your Champion to attack it.
-      </p>
     </div>
   );
 }

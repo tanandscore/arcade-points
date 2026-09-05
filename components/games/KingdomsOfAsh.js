@@ -351,6 +351,7 @@ export default function KingdomsOfAsh({ onFinish, accentColor }) {
   const canvasRef = useRef(null);
   const [deviceOk, setDeviceOk] = useState(null);
   const [phase, setPhase] = useState("menu");
+  const [isFullscreen, setIsFullscreen] = useState(false); // tracks the real fullscreen state, so the 3D view and HUD can actually fill the screen when active, not just sit at their normal size inside a fullscreened blank page
   const [difficulty, setDifficulty] = useState("contested");
   const [mapId, setMapId] = useState("verdant");
   const [difficultyBests, setDifficultyBests] = useState({});
@@ -414,6 +415,19 @@ export default function KingdomsOfAsh({ onFinish, accentColor }) {
     const isTouchPrimary = window.matchMedia("(pointer: coarse)").matches;
     const isSmall = window.innerWidth < 1024;
     setDeviceOk(!isTouchPrimary && !isSmall);
+  }, []);
+
+  // Tracks real fullscreen state via the browser's own event, rather
+  // than assuming it's active right after requestFullscreen() is
+  // called (that call is async and can be silently rejected) — the
+  // game area only actually resizes to fill the screen once this
+  // fires true. Same pattern as Wrath of Olympus's own version.
+  useEffect(() => {
+    function handleFullscreenChange() {
+      setIsFullscreen(!!document.fullscreenElement);
+    }
+    document.addEventListener("fullscreenchange", handleFullscreenChange);
+    return () => document.removeEventListener("fullscreenchange", handleFullscreenChange);
   }, []);
 
   useEffect(() => {
@@ -836,25 +850,17 @@ export default function KingdomsOfAsh({ onFinish, accentColor }) {
     return true;
   }
 
-  function handleCanvasClick(e) {
-    if (phase !== "playing") return;
-    const rect = canvasRef.current.getBoundingClientRect();
-    const scaleX = MAP_W / rect.width;
-    const scaleY = MAP_H / rect.height;
-    const x = (e.clientX - rect.left) * scaleX;
-    const y = (e.clientY - rect.top) * scaleY;
-    handleWorldClick(x, y);
-  }
-
-  // Extracted from handleCanvasClick above so the exact same,
-  // already-verified building-placement, upgrade, and ruins logic
-  // can be triggered from a genuinely different input source — the
-  // 3D preview's own click handling, which arrives at these same
-  // real game coordinates via 3D raycasting against the ground
-  // plane, then converts back to this game's real MAP_W/MAP_H pixel
-  // space — without duplicating a single line of it. Both input
-  // paths now call this one function; only how (x, y) gets computed
-  // differs between them.
+  // handleWorldClick — the real, still-used building-placement,
+  // upgrade, and ruins logic, now driven entirely by the 3D view's
+  // own raycasting-based click handling (its onWorldClick prop).
+  // handleCanvasClick, which used to convert 2D DOM click events into
+  // these same coordinates, was removed here since the 2D canvas is
+  // no longer visible or interactive — kept in the DOM only to drive
+  // game state, per the comment on the hidden canvas element below.
+  // The 3D view arrives at these same real game coordinates via 3D
+  // raycasting against the ground plane, then converts back to this
+  // game's real MAP_W/MAP_H pixel space — without duplicating a
+  // single line of placement logic.
   function handleWorldClick(x, y) {
     const type = selectedTypeRef.current;
     if (!type) {
@@ -991,21 +997,15 @@ export default function KingdomsOfAsh({ onFinish, accentColor }) {
     return true;
   }
 
-  function handleCanvasMouseMove(e) {
-    const rect = canvasRef.current.getBoundingClientRect();
-    const scaleX = MAP_W / rect.width;
-    const scaleY = MAP_H / rect.height;
-    const x = (e.clientX - rect.left) * scaleX;
-    const y = (e.clientY - rect.top) * scaleY;
-    const near = villagersRef.current.find((v) => dist(x, y, v.x, v.y) < 10);
-    if (!near) {
-      setHoveredVillager(null);
-      return;
-    }
-    const job = near.job ? buildingsRef.current.find((b) => b.id === near.job) : null;
-    const roleLabel = job ? BUILDING_TYPES[job.type]?.name || "Worker" : "Unemployed";
-    setHoveredVillager({ name: near.name, age: near.age, role: roleLabel, trait: near.trait, x: near.x, y: near.y });
-  }
+  // handleCanvasMouseMove (the villager hover tooltip) removed here —
+  // it computed coordinates from a 2D DOM mousemove event, which the
+  // now-hidden canvas no longer receives. A real replacement would
+  // need mousemove-based raycasting on the 3D view itself (the same
+  // approach already used for its click handling), a genuinely
+  // separate feature to build and verify on its own — not safely
+  // rushed into this same change. The tooltip's own JSX is left in
+  // place for that follow-up; hoveredVillager just won't be set until
+  // then.
 
   function assignJobs() {
     for (const b of buildingsRef.current) {
@@ -2529,25 +2529,59 @@ export default function KingdomsOfAsh({ onFinish, accentColor }) {
 
   return (
     <div className="text-center relative">
-      <div className="flex justify-between font-mono text-[11px] mb-2 text-textDim max-w-[640px] mx-auto flex-wrap gap-1 bg-bgDeep/80 border border-amber-600/50 rounded-lg px-3 py-2">
-        <span>🪵 {hud.wood} · 🪨 {hud.stone} · 🌾 {hud.food} · 🪙 {hud.gold}</span>
-        <span>🏰 {kingdomTier(hud.population).name} · ⚔️ Lv.{hud.kingdomLevel}</span>
-        <span>👥 {hud.population} · ⏱️ {Math.floor(hud.timeLeft / 60)}:{String(hud.timeLeft % 60).padStart(2, "0")}</span>
-      </div>
-
       <div
-        className="relative mx-auto rounded-lg overflow-hidden border border-amber-600/50"
-        style={{ width: MAP_W, maxWidth: "92vw", maxHeight: "50vh", aspectRatio: `${MAP_W} / ${MAP_H}` }}
+        className="relative mx-auto overflow-hidden border border-amber-600/50"
+        style={
+          isFullscreen
+            ? { width: "100vw", height: "100vh", borderRadius: 0 }
+            : { width: MAP_W, maxWidth: "92vw", maxHeight: "50vh", aspectRatio: `${MAP_W} / ${MAP_H}`, borderRadius: "0.5rem" }
+        }
       >
+        {/* The 3D view is now the real, primary visual — not a
+            preview alongside a 2D canvas. It fills this container
+            completely, and this container itself becomes the actual
+            fullscreen viewport once isFullscreen is true, tracked
+            via the real fullscreenchange event above. Same pattern
+            already proven for Wrath of Olympus. */}
+        <div className="absolute inset-0">
+          <KingdomsOfAsh3D
+            mapW={MAP_W}
+            mapH={MAP_H}
+            mapRef={mapRef}
+            buildingsRef={buildingsRef}
+            villagersRef={villagersRef}
+            banditsRef={banditsRef}
+            buildingColors={BUILDING_COLORS_HEX}
+            onWorldClick={handleWorldClick}
+          />
+        </div>
+        {/* The original 2D canvas — kept in the DOM, not removed,
+            since the entire game loop lives inside the same function
+            that also draws to it. Hidden via opacity/pointer-events
+            rather than display:none so it keeps rendering correctly.
+            Its onClick moved to handleWorldClick via the 3D view's
+            own raycasting; onMouseMove/onMouseLeave (the villager
+            hover tooltip) are deliberately NOT ported here yet — that
+            needs real mousemove-based raycasting on the 3D view, a
+            genuinely separate feature to build and verify on its own,
+            not a safe thing to rush into this same change. The
+            tooltip's own JSX below is left in place, ready for that
+            follow-up, but hoveredVillager will not currently be set. */}
         <canvas
           ref={canvasRef}
           width={MAP_W}
           height={MAP_H}
-          style={{ width: "100%", height: "100%", display: "block", cursor: selectedType ? "copy" : "default" }}
-          onClick={handleCanvasClick}
-          onMouseMove={handleCanvasMouseMove}
-          onMouseLeave={() => setHoveredVillager(null)}
+          style={{ position: "absolute", top: 0, left: 0, width: "1px", height: "1px", opacity: 0, pointerEvents: "none" }}
+          aria-hidden="true"
         />
+        {/* HUD — now a real overlay on top of the fullscreen 3D view,
+            not a separate stacked element above a small canvas. */}
+        <div className="absolute top-2 left-1/2 -translate-x-1/2 flex justify-between font-mono text-[11px] text-textDim flex-wrap gap-1 bg-bgDeep/80 border border-amber-600/50 rounded-lg px-3 py-2 z-10" style={{ maxWidth: "94%" }}>
+          <span>🪵 {hud.wood} · 🪨 {hud.stone} · 🌾 {hud.food} · 🪙 {hud.gold}</span>
+          <span>🏰 {kingdomTier(hud.population).name} · ⚔️ Lv.{hud.kingdomLevel}</span>
+          <span>👥 {hud.population} · ⏱️ {Math.floor(hud.timeLeft / 60)}:{String(hud.timeLeft % 60).padStart(2, "0")}</span>
+        </div>
+
         {hoveredVillager && (
           <div
             className="absolute bg-bgDeep/95 border border-lineColor rounded-md px-2 py-1 pointer-events-none"
@@ -2619,51 +2653,35 @@ export default function KingdomsOfAsh({ onFinish, accentColor }) {
             </button>
           </div>
         )}
-      </div>
 
-      {/* Real 3D preview — additive only, verified separately before
-          being wired here (heightmap terrain, the British castle
-          redesign, real anatomical villagers/bandits with hats and
-          weapons, all confirmed working through direct testing
-          before this integration). Does not affect gameplay or
-          input in any way; the canvas above still handles 100% of
-          real interaction exactly as it always has. */}
-      <div className="max-w-[640px] mx-auto mt-3 rounded-lg overflow-hidden border border-lineColor">
-        <p className="font-mono text-[10px] px-3 py-1.5" style={{ background: "rgba(120,220,255,0.1)", color: "#78dcff" }}>
-          🏰 3D PREVIEW (BETA) — mirrors the live kingdom above, doesn&apos;t affect it
-        </p>
-        <KingdomsOfAsh3D
-          mapW={MAP_W}
-          mapH={MAP_H}
-          mapRef={mapRef}
-          buildingsRef={buildingsRef}
-          villagersRef={villagersRef}
-          banditsRef={banditsRef}
-          buildingColors={BUILDING_COLORS_HEX}
-          onWorldClick={handleWorldClick}
-        />
+        {/* Build menu and instructions — now an overlay at the bottom
+            of the same fullscreen container instead of separate
+            elements below a small canvas, per "all game info
+            including controls and HUD should be within that
+            fullscreen". */}
+        <div className="absolute bottom-3 left-1/2 -translate-x-1/2 flex flex-col items-center gap-2 z-10" style={{ maxWidth: "94%" }}>
+          <div className="flex flex-wrap justify-center gap-1.5 bg-bgDeep/80 border border-amber-600/50 rounded-lg p-2">
+            {Object.entries(BUILDING_TYPES).map(([id, def]) => {
+              const affordable = Object.entries(def.cost).every(([k, v]) => hud[k] >= v);
+              const costStr = Object.entries(def.cost).map(([k, v]) => `${v}${k[0]}`).join(" ");
+              return (
+                <button
+                  key={id}
+                  onClick={() => setSelectedType(selectedType === id ? null : id)}
+                  disabled={!affordable}
+                  className="px-2.5 py-2 rounded-md border font-mono text-[9px] disabled:opacity-35"
+                  style={{ borderColor: selectedType === id ? accentColor : "rgba(169,159,214,0.3)" }}
+                  title={def.name}
+                >
+                  <div>{def.icon} {def.name}</div>
+                  <div className="text-textDim">{costStr || "free"}</div>
+                </button>
+              );
+            })}
+          </div>
+          <p className="font-mono text-[10px] text-textDim">Pick a building, then click the grass to place it.</p>
+        </div>
       </div>
-
-      <div className="flex flex-wrap justify-center gap-1.5 mt-3 max-w-[640px] mx-auto bg-bgDeep/80 border border-amber-600/50 rounded-lg p-2">
-        {Object.entries(BUILDING_TYPES).map(([id, def]) => {
-          const affordable = Object.entries(def.cost).every(([k, v]) => hud[k] >= v);
-          const costStr = Object.entries(def.cost).map(([k, v]) => `${v}${k[0]}`).join(" ");
-          return (
-            <button
-              key={id}
-              onClick={() => setSelectedType(selectedType === id ? null : id)}
-              disabled={!affordable}
-              className="px-2.5 py-2 rounded-md border font-mono text-[9px] disabled:opacity-35"
-              style={{ borderColor: selectedType === id ? accentColor : "rgba(169,159,214,0.3)" }}
-              title={def.name}
-            >
-              <div>{def.icon} {def.name}</div>
-              <div className="text-textDim">{costStr || "free"}</div>
-            </button>
-          );
-        })}
-      </div>
-      <p className="font-mono text-[10px] text-textDim mt-3">Pick a building, then click the grass to place it.</p>
     </div>
   );
 }
