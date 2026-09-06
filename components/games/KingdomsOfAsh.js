@@ -2534,16 +2534,24 @@ export default function KingdomsOfAsh({ onFinish, accentColor }) {
         style={
           isFullscreen
             ? { width: "100vw", height: "100vh", borderRadius: 0 }
-            // Direct viewport-relative width AND height, deliberately
-            // not CSS aspect-ratio combined with separate maxWidth/
-            // maxHeight constraints — that combination is exactly
-            // what produced a box with empty space around a smaller,
-            // wrongly-sized render. The 3D camera itself already
-            // adapts its own aspect ratio to whatever this
-            // container's real dimensions turn out to be (via the
-            // ResizeObserver fix in KingdomsOfAsh3D.js), so nothing
-            // here depends on hitting an exact width:height ratio.
-            : { width: "92vw", height: "50vh", borderRadius: "0.5rem" }
+            // Direct viewport-relative sizing, but with the width
+            // capped relative to the height — a real gap in the
+            // previous version of this fix: the camera's aspect ratio
+            // WAS correctly adapting to whatever shape this container
+            // ended up as, but adapting correctly doesn't mean
+            // looking good at an extreme one. On a typical widescreen
+            // monitor, "92vw" alongside a "50vh" height produces an
+            // aspect ratio over 3:1 — confirmed directly by rendering
+            // at that exact resolution — which widens the camera's
+            // horizontal field of view far past what this game's
+            // fixed-size map actually covers, revealing mostly empty
+            // sky on the sides. Capping the width at height*1.6 (this
+            // game's own map is close to a 4:3 world, and 1.6:1 was
+            // verified directly to fill the frame properly) keeps the
+            // container from ever becoming that extreme, while still
+            // using the full available width on more reasonable
+            // screen shapes.
+            : { width: "min(92vw, calc(50vh * 1.6))", height: "50vh", borderRadius: "0.5rem" }
         }
       >
         {/* The 3D view is now the real, primary visual — not a

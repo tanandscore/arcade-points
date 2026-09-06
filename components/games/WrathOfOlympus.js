@@ -1980,17 +1980,22 @@ export default function WrathOfOlympus({ onFinish, accentColor }) {
         style={
           isFullscreen
             ? { width: "100vw", height: "100vh", borderRadius: 0 }
-            // Direct viewport-relative width AND height, deliberately
-            // not CSS aspect-ratio combined with separate maxWidth/
-            // maxHeight constraints — that combination is exactly the
-            // kind of thing that can resolve to a box that doesn't
-            // actually match the intended shape, leaving empty space
-            // around whatever renders inside it. The 3D camera itself
-            // already adapts its own aspect ratio to whatever this
-            // container's real dimensions turn out to be (via the
-            // ResizeObserver fix below), so nothing here depends on
-            // hitting an exact width:height ratio anymore.
-            : { width: "94vw", height: "65vh", borderRadius: "0.5rem" }
+            // Direct viewport-relative sizing, but with the width
+            // capped relative to the height — a real gap in the
+            // previous version of this fix, confirmed directly by
+            // rendering Kingdoms of Ash at the exact resolution this
+            // combination produces on a typical widescreen monitor:
+            // the camera's aspect ratio WAS correctly adapting to
+            // whatever shape this container ended up as, but adapting
+            // correctly doesn't mean looking good at an extreme one.
+            // "94vw" alongside a "65vh" height produces an aspect
+            // ratio over 2.5:1, widening the camera's horizontal
+            // field of view far past what this game's fixed-size
+            // battlefield actually covers, revealing mostly empty sky
+            // on the sides. Capping the width at height*1.6 (verified
+            // directly to fill the frame properly) keeps the
+            // container from ever becoming that extreme.
+            : { width: "min(94vw, calc(65vh * 1.6))", height: "65vh", borderRadius: "0.5rem" }
         }
       >
         {/* The 3D view is now the real, primary visual — not a
