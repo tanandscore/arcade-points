@@ -67,7 +67,15 @@ export default function WrathScene3D({ mapW, mapH, temple, altar, championsRef, 
 
     const composer = new EffectComposer(renderer);
     composer.addPass(new RenderPass(scene, camera));
-    composer.addPass(new UnrealBloomPass(new THREE.Vector2(width, height), 0.35, 0.5, 0.5));
+    // Named, not inline — a real, confirmed Three.js quirk requires
+    // this: composer.setSize() does NOT correctly propagate to
+    // UnrealBloomPass's own internal resolution (verified directly —
+    // after a resize, the renderer's canvas correctly updated but the
+    // bloom pass's resolution stayed at its original, stale value).
+    // The resize handler below has to update bloomPass.resolution
+    // explicitly; that's only possible with a real reference to it.
+    const bloomPass = new UnrealBloomPass(new THREE.Vector2(width, height), 0.35, 0.5, 0.5);
+    composer.addPass(bloomPass);
     composer.addPass(new OutputPass());
 
     scene.add(new THREE.AmbientLight(0x4a3a6a, 0.7));
@@ -368,6 +376,7 @@ export default function WrathScene3D({ mapW, mapH, temple, altar, championsRef, 
       camera.updateProjectionMatrix();
       renderer.setSize(w, h);
       composer.setSize(w, h);
+      bloomPass.resolution.set(w, h); // the actual fix, verified directly — composer.setSize() alone leaves this stale, which is exactly what left the bloomed scene tiny and misplaced after any resize
     }
     const resizeObserver = new ResizeObserver(handleResize);
     resizeObserver.observe(mountRef.current);
