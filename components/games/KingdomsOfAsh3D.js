@@ -59,9 +59,15 @@ export default function KingdomsOfAsh3D({ mapW, mapH, mapRef, buildingsRef, vill
     const scene = new THREE.Scene();
     scene.fog = new THREE.FogExp2(0xcfe8f5, 0.0035);
 
-    const camera = new THREE.PerspectiveCamera(48, width / height, 0.1, 100);
-    camera.position.set(MAP_W / 2, 14, MAP_H + 10);
-    camera.lookAt(MAP_W / 2, 0, MAP_H / 2);
+    const camera = new THREE.PerspectiveCamera(62, width / height, 0.1, 100);
+    // Verified directly against a real render before landing here,
+    // the same wide-FOV-plus-close-camera approach found to work for
+    // Wrath of Olympus: widening the field of view while staying
+    // close makes the castle and surrounding village genuinely larger
+    // and more detailed, filling more of the frame, rather than
+    // pulling the camera back and leaving more empty ground visible.
+    camera.position.set(MAP_W / 2, MAP_H * 0.833, MAP_H + 3);
+    camera.lookAt(MAP_W / 2, 0.3, MAP_H * 0.5);
 
     // Real gradient sky — a skydome sphere with vertex colors, the
     // same technique verified during prototyping, replacing a flat

@@ -61,15 +61,18 @@ export default function WrathScene3D({ mapW, mapH, temple, altar, championsRef, 
     scene.background = new THREE.Color(0x0a0614);
     scene.fog = new THREE.FogExp2(0x0a0614, 0.05);
 
-    const camera = new THREE.PerspectiveCamera(50, width / height, 0.1, 100);
-    // Verified directly against a real render before landing here: the
-    // original position showed both the Temple and Altar, but zoomed
-    // out so far that both appeared small against a mostly-empty dark
-    // background — worse than it needed to be, on top of the aspect-
-    // ratio issue found in Kingdoms of Ash. Moved closer and re-tested
-    // until both structures were noticeably larger while still fully
-    // in frame with no cropping.
-    camera.position.set(MAP_W / 2, MAP_H * 1.05, MAP_H + 6);
+    const camera = new THREE.PerspectiveCamera(68, width / height, 0.1, 100);
+    // Verified directly against real renders before landing here —
+    // two earlier attempts both failed in different ways: the
+    // original position showed both structures but too small and
+    // distant; a closer position (without widening the FOV) made the
+    // Altar look great but cropped the Temple out of frame entirely.
+    // A wider field of view (68°, up from 50°) combined with staying
+    // close is what actually let both structures be large, detailed,
+    // AND fully in frame at the same time — confirmed by rendering
+    // all three attempts and comparing them directly, not assumed
+    // from the first one that looked better than nothing.
+    camera.position.set(MAP_W / 2, MAP_H * 0.75, MAP_H + 2);
     camera.lookAt(MAP_W / 2, 0.3, MAP_H * 0.52);
 
     const composer = new EffectComposer(renderer);
@@ -85,8 +88,8 @@ export default function WrathScene3D({ mapW, mapH, temple, altar, championsRef, 
     composer.addPass(bloomPass);
     composer.addPass(new OutputPass());
 
-    scene.add(new THREE.AmbientLight(0x4a3a6a, 1.0));
-    const moon = new THREE.DirectionalLight(0x8ea8ff, 0.9);
+    scene.add(new THREE.AmbientLight(0x4a3a6a, 1.6));
+    const moon = new THREE.DirectionalLight(0x8ea8ff, 1.3);
     moon.position.set(-5, 12, 4);
     moon.castShadow = true;
     moon.shadow.mapSize.set(1024, 1024);
