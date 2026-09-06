@@ -1,0 +1,95 @@
+@import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --bg-deep: #12092b;
+}
+
+body {
+  background: radial-gradient(circle at 50% 0%, #1d1046 0%, #12092b 55%);
+  color: #f5f0ff;
+  font-family: 'Space Grotesk', sans-serif;
+  min-height: 100vh;
+  /* App-like touch feel: no lag before a tap registers, no gray flash
+     on tap, no accidental pull-to-refresh mid-game. */
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+  overscroll-behavior-y: contain;
+}
+
+button, a {
+  -webkit-tap-highlight-color: transparent;
+  /* Rapid tapping (game controls especially) shouldn't ever trigger a
+     text-selection highlight — that's the single biggest thing that
+     makes a fast-tap interface feel like a webpage instead of an app. */
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+.ap-scanlines {
+  background-image: repeating-linear-gradient(
+    to bottom,
+    rgba(255, 255, 255, 0.025) 0px,
+    rgba(255, 255, 255, 0.025) 1px,
+    transparent 1px,
+    transparent 3px
+  );
+}
+
+@keyframes chase {
+  0%, 100% { opacity: .25; box-shadow: none; }
+  50% { opacity: 1; box-shadow: 0 0 8px 2px currentColor; }
+}
+@keyframes popIn {
+  from { opacity: 0; transform: scale(.92); }
+  to { opacity: 1; transform: scale(1); }
+}
+@keyframes blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: .35; }
+}
+@keyframes confettiFall {
+  0% { transform: translateY(0) rotate(0deg); opacity: 1; }
+  100% { transform: translateY(110vh) rotate(540deg); opacity: 0.9; }
+}
+.ap-confetti-piece {
+  animation-name: confettiFall;
+  animation-timing-function: ease-in;
+  animation-fill-mode: forwards;
+}
+.ap-marquee-light { animation: chase 1.3s infinite ease-in-out; }
+.ap-pop-in { animation: popIn .25s ease-out both; }
+.ap-blink { animation: blink 1.1s infinite; }
+
+/* Custom scrollbar — matches the site's dark-purple/neon theme
+   instead of showing each browser's default gray scrollbar, which is
+   what was actually making the horizontal game rails (and any other
+   scrollable area) look out of place against everything else here.
+   Firefox uses the two scrollbar-* properties; every Chromium/WebKit
+   browser (which is most mobile browsers too) uses ::-webkit-scrollbar. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(62, 230, 224, 0.45) rgba(18, 9, 43, 0.4);
+}
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: rgba(18, 9, 43, 0.4);
+  border-radius: 8px;
+}
+::-webkit-scrollbar-thumb {
+  background: linear-gradient(180deg, rgba(62, 230, 224, 0.55), rgba(255, 62, 165, 0.55));
+  border-radius: 8px;
+  border: 1px solid rgba(169, 159, 214, 0.15);
+}
+::-webkit-scrollbar-thumb:hover {
+  background: linear-gradient(180deg, rgba(62, 230, 224, 0.85), rgba(255, 62, 165, 0.85));
+}
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
