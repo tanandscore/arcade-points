@@ -14,6 +14,7 @@ import { DEFAULT_SPEC, specOf } from "@/lib/midnightBurn/cars";
 import { Showroom, CustomisePanel, pendingItems } from "./MidnightBurnGarage";
 import { useStage, stageBoxStyle } from "./FullscreenStage";
 import { sfx, isMuted, toggleMuted } from "@/lib/sound";
+import { createCarAudio } from "@/lib/midnightBurn/engineAudio";
 
 // MIDNIGHT BURN — MUMBAI UNDERGROUND. A free-roam night city built on Mumbai, Thane and Navi Mumbai: highways,
 // flyovers, sea bridges, hills and docks, with street races, duels against ten named drivers, drift zones, speed
@@ -41,31 +42,7 @@ function getCity() { if (!CACHES[ERA]) { const world = createCityWorld(7, ERA); 
 function loadSave() { try { const s = localStorage.getItem(saveKey()); return s ? JSON.parse(s) : null; } catch { return null; } }
 function writeSave(c) { try { localStorage.setItem(saveKey(), JSON.stringify(c)); } catch {} }
 
-function makeEngine() {
-  try {
-    const Ctx = window.AudioContext || window.webkitAudioContext; if (!Ctx) return null;
-    const ctx = new Ctx(); const master = ctx.createGain(); master.gain.value = 0; master.connect(ctx.destination);
-    const f = ctx.createBiquadFilter(); f.type = "lowpass"; f.frequency.value = 700; f.connect(master);
-    const mk = (type, g) => { const o = ctx.createOscillator(); o.type = type; const gn = ctx.createGain(); gn.gain.value = g; o.connect(gn); gn.connect(f); o.start(); return o; };
-    const o1 = mk("sawtooth", 1), o2 = mk("square", 0.7), o3 = mk("triangle", 0.35);
-    const buf = ctx.createBuffer(1, ctx.sampleRate, ctx.sampleRate); const d = buf.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
-    const noise = (type, freq, q) => { const s = ctx.createBufferSource(); s.buffer = buf; s.loop = true; const bf = ctx.createBiquadFilter(); bf.type = type; bf.frequency.value = freq; bf.Q.value = q; const g = ctx.createGain(); g.gain.value = 0; s.connect(bf); bf.connect(g); g.connect(ctx.destination); s.start(); return g; };
-    const squealG = noise("bandpass", 1750, 5), windG = noise("lowpass", 650, 0.7), rainG = noise("highpass", 2400, 0.4), cityG = noise("lowpass", 300, 0.5);
-    return {
-      set(s) {
-        const t = ctx.currentTime; const hz = 34 + s.rpm * 150 + (s.nos ? 10 : 0);
-        o1.frequency.setTargetAtTime(hz, t, 0.04); o2.frequency.setTargetAtTime(hz * 0.5, t, 0.04); o3.frequency.setTargetAtTime(hz * 2, t, 0.04);
-        f.frequency.setTargetAtTime(420 + s.rpm * 1500 + (s.thr ? 450 : 0), t, 0.06);
-        const m = isMuted() ? 0 : (0.045 + (s.thr ? 0.03 : 0) + (s.nos ? 0.02 : 0)) * (s.shifting ? 0.35 : 1);
-        master.gain.setTargetAtTime(m, t, 0.05);
-        squealG.gain.setTargetAtTime(isMuted() ? 0 : s.squeal * 0.07, t, 0.05); windG.gain.setTargetAtTime(isMuted() ? 0 : Math.min(1, s.v / 70) * 0.05, t, 0.2);
-        rainG.gain.setTargetAtTime(isMuted() ? 0 : s.rain * 0.03, t, 0.5); cityG.gain.setTargetAtTime(isMuted() ? 0 : 0.012, t, 0.5);
-      },
-      resume() { if (ctx.state === "suspended") ctx.resume(); },
-      stop() { try { master.gain.value = 0; squealG.gain.value = 0; windG.gain.value = 0; rainG.gain.value = 0; cityG.gain.value = 0; o1.stop(); o2.stop(); o3.stop(); ctx.close(); } catch {} },
-    };
-  } catch { return null; }
-}
+function makeEngine() { try { return createCarAudio(isMuted); } catch { return null; } }
 
 function Bar({ label, value, max = 1, color, right }) {
   return (
@@ -170,7 +147,7 @@ function MidnightBurnCityInner({ onFinish, accentColor, onMood, onClassic, music
         if (!G.pause) { acc += dt; while (acc >= DT && simSteps < 6) { G.step(inputNow(), DT); acc -= DT; simSteps++; } if (acc > DT * 6) acc = 0; }
         view.update(G.pause ? 0 : dt, simSteps ? DT : 0);
         const P1 = G.player;
-        if (eng) { const run = G.run; eng.set({ rpm: P1.rpm, nos: P1.nos, thr: !!inputNow().throttle && !pausedNow, shifting: P1.shiftT > 0, squeal: pausedNow ? 0 : (P1.drifting ? Math.min(1, P1.slip * 2) : P1.braking && P1.speed > 25 ? 0.5 : 0), v: pausedNow ? 0 : P1.speed, rain: G.weather.rain }); }
+        if (eng) { const run = G.run; eng.set({ rpm: P1.rpm, nos: P1.nos, thr: !!inputNow().throttle && !pausedNow, shifting: P1.shiftT > 0, squeal: pausedNow ? 0 : (P1.drifting ? Math.min(1, P1.slip * 2) : P1.braking && P1.speed > 25 ? 0.5 : 0), v: pausedNow ? 0 : P1.speed, rain: G.weather.rain, car: G.career.car, cam: vref.current ? vref.current.cam.mode : 0, hit: pausedNow ? 0 : P1.hit, nm: !!G.nmFlash, tunnel: !!(P1.surfRoad && P1.surfRoad.tunnel), wetRoad: G.weather.rain > 0.3 }); }
         if (!mini || !mini.isConnected) { mini = miniRef.current; mctx = mini ? mini.getContext("2d") : null; }
         if (mctx && !G.pause) drawMinimap(mctx, mini.width, city.base, G);
         hudT -= dt;
@@ -217,7 +194,7 @@ function MidnightBurnCityInner({ onFinish, accentColor, onMood, onClassic, music
       if (k === "p" || k === "Escape") { if (G.state === "shop") closeShop(); else if (G.state !== "result") togglePause(); }
       if (k === "m") { if (!G.pause) { setTab("map"); togglePause(true); } else if (tabRef.current === "map") togglePause(false); else setTab("map"); }
       if (k === "Enter") { if (G.pause || G.state === "result") { if (G.state === "result") closeResult(); return; } if (G.state === "roam") { if (G.shopNear) openShop(); else if (G.near) G.startNear(); } }
-      if (k === "c") { const v = vref.current; if (v) { v.cam.mode = (v.cam.mode + 1) % 3; v.setCameraMode(v.cam.mode); setCamLabel(["CHASE", "FAR", "HOOD"][v.cam.mode]); } }
+      if (k === "c") { const v = vref.current; if (v) { v.cam.mode = (v.cam.mode + 1) % 4; v.setCameraMode(v.cam.mode); setCamLabel(["CHASE", "FAR", "HOOD", "COCKPIT"][v.cam.mode]); } }
       if (k === "r" && !G.pause && G.state !== "result") G.reset();
       if (k === "f") stage.toggle();
       if (k === "f") { stage.toggle(); }
