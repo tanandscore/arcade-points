@@ -22,7 +22,8 @@ import { sfx, isMuted, toggleMuted } from "@/lib/sound";
 // lib/midnightBurn/open/*   — the city, the physics, the events and the 3D view (the game rules live in sim.js)
 // this file                  — menus, HUD, map, shops and the game loop
 
-const SAVE_KEY = "midnightburn.city.v2";
+const SAVE_KEYS = { now: "midnightburn.city.v2", "2046": "midnightburn.city2046.v1" };
+let ERA = "now"; const saveKey = () => SAVE_KEYS[ERA];
 const CUR = "₹";
 const STARTERS = P.CARS.filter((c) => !c.locked);
 const PAINTS = ["#2de2ff", "#ff2d95", "#6bff6b", "#ffb703", "#b45cff", "#ff5a1f", "#f2f2f2"];
@@ -34,11 +35,11 @@ const hexInt = (h) => parseInt(h.slice(1), 16);
 const fmtTime = (t) => { const m = Math.floor(t / 60); const s = t - m * 60; return `${m}:${s.toFixed(2).padStart(5, "0")}`; };
 const money = (n) => CUR + Math.round(n).toLocaleString();
 
-let CACHE = null; // the city takes a couple of seconds to build; keep it for the next visit
-function getCity() { if (!CACHE) { const world = createCityWorld(7); CACHE = { world, content: buildContent(world), base: null }; } return CACHE; }
+const CACHES = {}; // the city takes a couple of seconds to build; keep each era for the next visit
+function getCity() { if (!CACHES[ERA]) { const world = createCityWorld(7, ERA); CACHES[ERA] = { world, content: buildContent(world), base: null }; } return CACHES[ERA]; }
 
-function loadSave() { try { const s = localStorage.getItem(SAVE_KEY); return s ? JSON.parse(s) : null; } catch { return null; } }
-function writeSave(c) { try { localStorage.setItem(SAVE_KEY, JSON.stringify(c)); } catch {} }
+function loadSave() { try { const s = localStorage.getItem(saveKey()); return s ? JSON.parse(s) : null; } catch { return null; } }
+function writeSave(c) { try { localStorage.setItem(saveKey(), JSON.stringify(c)); } catch {} }
 
 function makeEngine() {
   try {
@@ -107,6 +108,8 @@ function MidnightBurnCityInner({ onFinish, accentColor, onMood, onClassic, music
   const vref = useRef(null);
   const submitted = useRef(false);
   const accent = accentColor || "#ff2d95";
+  const [era, setEraS] = useState("now");
+  function pickEra(e) { ERA = e; setEraS(e); setSave(loadSave()); sfx.tap(); }
 
   useEffect(() => {
     const coarse = window.matchMedia("(pointer: coarse)").matches;
@@ -123,7 +126,7 @@ function MidnightBurnCityInner({ onFinish, accentColor, onMood, onClassic, music
   function begin(fresh) {
     sfx.click(); stage.enter(); setPhase("loading"); setProgress(0); setFailed(false); setLoadMsg("Building the city…");
     const s = fresh ? null : save;
-    if (fresh) { const c = EMPTY_CAREER(); c.car = newCar; c.spec = { ...DEFAULT_SPEC, car: newCar, color: newPaint }; try { localStorage.removeItem(SAVE_KEY); } catch {} setSave(null); window.__mbFresh = c; } else window.__mbFresh = null;
+    if (fresh) { const c = EMPTY_CAREER(); c.car = newCar; c.spec = { ...DEFAULT_SPEC, car: newCar, color: newPaint }; try { localStorage.removeItem(saveKey()); } catch {} setSave(null); window.__mbFresh = c; } else window.__mbFresh = null;
     submitted.current = false;
     setTimeout(() => { setPhase("play"); }, 60);
   }
@@ -217,6 +220,7 @@ function MidnightBurnCityInner({ onFinish, accentColor, onMood, onClassic, music
       if (k === "c") { const v = vref.current; if (v) { v.cam.mode = (v.cam.mode + 1) % 3; v.setCameraMode(v.cam.mode); setCamLabel(["CHASE", "FAR", "HOOD"][v.cam.mode]); } }
       if (k === "r" && !G.pause && G.state !== "result") G.reset();
       if (k === "f") stage.toggle();
+      if (k === "f") { stage.toggle(); }
       if (k === "n") { musicRef && musicRef.current && musicRef.current.next(); }
       if (k === "x" && G.run && G.state === "event") { G.abortEvent(); }
       if (k === "g" && !G.pause && G.near) { G.setWaypoint(G.near.sx, G.near.sz, G.near.name); }
@@ -228,14 +232,14 @@ function MidnightBurnCityInner({ onFinish, accentColor, onMood, onClassic, music
     return () => { window.removeEventListener("keydown", down); window.removeEventListener("keyup", up); window.removeEventListener("blur", blur); };
   }); // eslint-disable-line
   const tabRef = useRef(tab); tabRef.current = tab;
-  const wasFull = useRef(false);
+  const wasFull = useRef(false); const reenter = useRef(false);
   useEffect(() => { // Esc leaves fullscreen without telling the page about the key, so leaving fullscreen pauses the game
-    if (wasFull.current && !stage.isFull) { const G = gref.current; if (G && G.state !== "result" && G.state !== "shop" && !G.pause) togglePause(true); }
+    if (wasFull.current && !stage.isFull) { reenter.current = true; const G = gref.current; if (G && G.state !== "result" && G.state !== "shop" && !G.pause) togglePause(true); }
     wasFull.current = stage.isFull;
   }, [stage.isFull]); // eslint-disable-line
   useEffect(() => { const vis = () => { const G = gref.current; if (document.hidden && G && G.state !== "result" && G.state !== "shop" && !G.pause) togglePause(true); }; document.addEventListener("visibilitychange", vis); return () => document.removeEventListener("visibilitychange", vis); }, []); // eslint-disable-line
 
-  function togglePause(v) { const G = gref.current; if (!G) return; G.pause = v === undefined ? !G.pause : v; keys.current = {}; setPaused(G.pause); setSel(null); if (G.pause) sfx.tap(); }
+  function togglePause(v) { const G = gref.current; if (!G) return; G.pause = v === undefined ? !G.pause : v; if (!G.pause && reenter.current) { reenter.current = false; try { stage.enter(); } catch {} } if (G.pause && stage.isFull) reenter.current = false; keys.current = {}; setPaused(G.pause); setSel(null); if (G.pause) sfx.tap(); }
   function closeResult() { const G = gref.current; if (G && G.state === "result") { sfx.click(); G.closeResult(); } }
   function openShop() { const G = gref.current; const s = G && G.shopOpen(); if (s) { sfx.select && sfx.select(); setShop(s); setDraft(null); setTick((t) => t + 1); keys.current = {}; } }
   function closeShop() { const G = gref.current; if (!G) return; G.shopClose(); setShop(null); setDraft(null); vref.current && vref.current.refreshPlayer(); }
@@ -284,6 +288,13 @@ function MidnightBurnCityInner({ onFinish, accentColor, onMood, onClassic, music
             </div>
           </div>
         )}
+        <div className="flex gap-3 justify-center mb-4 flex-wrap max-w-3xl mx-auto">
+          {[["now", "MUMBAI · TODAY", "The city as it is: Sea Link, Atal Setu, Marine Drive, Dharavi, BKC."], ["2046", "MUMBAI · 2046", "20 years on: wider smart roads, six metro lines on glowing viaducts, the Goregaon–Mulund twin tunnels under the national park, the coastal road, a taller glass skyline."]].map(([k, t, d]) => (
+            <button key={k} onClick={() => pickEra(k)} className="rounded-xl border p-3 text-left flex-1 min-w-[240px] hover:bg-bgPanel3" style={{ borderColor: era === k ? accent : "#2a2a44", background: era === k ? "rgba(255,255,255,0.05)" : undefined }}>
+              <p className="font-pixel text-[10px] mb-1" style={{ color: era === k ? accent : "#cfd2ff" }}>{t}</p><p className="text-[11px] text-textDim">{d}</p>
+            </button>
+          ))}
+        </div>
         <p className="font-mono text-[10px] text-textDim mb-2">{save ? "OR START A NEW CAREER" : "PICK YOUR STARTER"}</p>
         <Showroom spec={spec} height={220} className="max-w-2xl mx-auto mb-3" />
         <div className="grid sm:grid-cols-3 gap-3 max-w-3xl mx-auto mb-3">
@@ -342,6 +353,7 @@ function MidnightBurnCityInner({ onFinish, accentColor, onMood, onClassic, music
 
 // =============================== HUD ======================================================================================================
 function Hud({ hud, accent, miniRef, camLabel, G, onPause, paused }) {
+  const stage = useStage();
   const lp = D.levelProgress(hud.xp); const ev = hud.ev;
   const rpmCol = hud.rpm > 0.92 ? "#ff3b3b" : "#ffffff";
   return (
@@ -354,6 +366,7 @@ function Hud({ hud, accent, miniRef, camLabel, G, onPause, paused }) {
         <p className="text-[10px] text-white/60">SCORE {hud.score.toLocaleString()}</p>
       </div>
       {/* pause button — always clickable, same as P / Esc */}
+      <button onClick={() => stage.toggle()} aria-label="Fullscreen" className="pointer-events-auto absolute font-pixel text-[9px] rounded-md px-2.5 py-1.5" style={{ top: 12, left: 352, background: "rgba(0,0,0,0.55)", border: "1px solid rgba(255,255,255,0.35)", color: "#fff", textShadow: "none" }}>{stage.isFull ? "⛶ EXIT FULL (F)" : "⛶ FULLSCREEN (F)"}</button>
       <button onClick={onPause} aria-label="Pause" className="pointer-events-auto absolute font-pixel text-[9px] rounded-md px-2.5 py-1.5" style={{ top: 12, left: 232, background: "rgba(0,0,0,0.55)", border: "1px solid rgba(255,255,255,0.35)", color: "#fff", textShadow: "none" }}>❚❚ PAUSE (P)</button>
       {/* top right: place and weather */}
       <div className="absolute top-3 right-4 text-right">
@@ -475,13 +488,14 @@ function ShopPanel({ G, shop, draft, setDraft, onClose, accent, refresh, onQuit 
 
 // =============================== PAUSE: map, events, career ============================================================================
 function PausePanel({ G, tab, setTab, sel, setSel, evFilter, setEvFilter, accent, onResume, onQuit, muted, onMute }) {
+  const stage = useStage();
   const tabs = [["map", "MAP"], ["events", "EVENTS"], ["career", "CAREER"], ["options", "OPTIONS"]];
   return (
     <div className="absolute inset-0 pointer-events-auto flex flex-col" style={{ background: "rgba(4,4,12,0.94)" }}>
       <div className="flex items-center gap-2 px-4 py-2 border-b border-lineColor">
         <p className="font-pixel text-[11px] mr-3" style={{ color: accent }}>PAUSED</p>
         {tabs.map(([k, l]) => <button key={k} onClick={() => { setTab(k); sfx.tap(); }} className="font-pixel text-[9px] px-3 py-1.5 rounded" style={{ background: tab === k ? accent : "transparent", color: tab === k ? "#07070f" : "#aab" }}>{l}</button>)}
-        <div className="flex-1" /><Btn small color="#6bff9a" onClick={onResume}>RESUME (P)</Btn>
+        <div className="flex-1" /><Btn small color="#9fd0ff" onClick={() => stage.toggle()}>{stage.isFull ? "EXIT FULLSCREEN" : "⛶ FULLSCREEN"}</Btn><Btn small color="#6bff9a" onClick={onResume}>RESUME (P)</Btn>
       </div>
       <div className="flex-1 min-h-0 overflow-hidden">
         {tab === "map" && <MapTab G={G} sel={sel} setSel={setSel} accent={accent} onResume={onResume} />}
