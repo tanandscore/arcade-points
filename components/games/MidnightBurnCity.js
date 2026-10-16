@@ -6,7 +6,9 @@ import { buildContent } from "@/lib/midnightBurn/open/content";
 import { createGame, EMPTY_CAREER, MEDALS } from "@/lib/midnightBurn/open/sim";
 import { createCityView } from "@/lib/midnightBurn/open/render";
 import { buildBaseMap, drawMinimap, MAP_S, MAP_PX } from "@/lib/midnightBurn/open/maps";
-import { districtAt } from "@/lib/midnightBurn/open/geo";
+import { districtAt, DISTRICTS } from "@/lib/midnightBurn/open/geo";
+import MidnightBurnIntro from "./MidnightBurnIntro";
+import { createIntroScore, INTRO } from "@/lib/midnightBurn/introScore";
 import { DT } from "@/lib/midnightBurn/open/drive";
 import * as P from "@/lib/midnightBurn/physics";
 import * as D from "@/lib/midnightBurn/drivers";
@@ -97,6 +99,7 @@ function MidnightBurnCityInner({ onFinish, accentColor, onMood, onClassic, music
   useEffect(() => { if (!onMood) return; onMood(phase !== "playing" ? 0.2 : paused ? 0.25 : hud && hud.ev ? 1 : 0.4 + speedBucket * 0.1); }, [phase, paused, hud && !!hud.ev, speedBucket]); // eslint-disable-line
   useEffect(() => { musicRef && musicRef.current && musicRef.current.setNitro(!!(hud && hud.nos)); }, [hud && hud.nos]); // eslint-disable-line
   const [radioNote, setRadioNote] = useState(null);
+  const [intro, setIntro] = useState(null); const introRef = useRef(null); const introWant = useRef(false);
   useEffect(() => { const m = musicRef && musicRef.current; if (!m) return undefined; let first = true; return m.onChange((s) => { if (first) { first = false; } setRadioNote({ name: s.name, tag: s.tag, t: Date.now() }); setTimeout(() => setRadioNote((r) => (r && Date.now() - r.t > 4500 ? null : r)), 4800); }); }, []); // eslint-disable-line
 
   // ---- start / continue -------------------------------------------------------------------------------------------------------------
@@ -118,7 +121,7 @@ function MidnightBurnCityInner({ onFinish, accentColor, onMood, onClassic, music
       let city; try { city = getCity(); } catch (e) { console.error(e); setFailed(true); return; }
       if (!alive) return;
       if (!city.base) { setLoadMsg("Drawing the map…"); await new Promise((r) => setTimeout(r, 10)); city.base = buildBaseMap(city.world.city); }
-      let career = window.__mbFresh || loadSave() || EMPTY_CAREER(); window.__mbFresh = null;
+      const wasFresh = !!window.__mbFresh; let career = window.__mbFresh || loadSave() || EMPTY_CAREER(); window.__mbFresh = null;
       if (!career.spec) career = { ...career, spec: { ...DEFAULT_SPEC, car: career.car, color: PAINTS[0] } };
       G = createGame(city.world, city.content, career, {
         seed: 1 + Math.floor(Math.random() * 999),
@@ -139,15 +142,84 @@ function MidnightBurnCityInner({ onFinish, accentColor, onMood, onClassic, music
         const k = keys.current; const up = k.w || k.ArrowUp, dn = k.s || k.ArrowDown, lf = k.a || k.ArrowLeft, rt = k.d || k.ArrowRight;
         return { throttle: up ? 1 : 0, brake: dn ? 1 : 0, steer: (rt ? 1 : 0) - (lf ? 1 : 0), hand: !!k[" "], nos: !!(k.Shift) };
       };
+
+      // ---- the cinematic intro: real-time shots over the live city, scripted camera, generated score ----------------------------------------
+      const ictl = { active: false, t0: 0, shot: -1, busy: false, saved: null, score: null, p0: null, inp: { throttle: 0, brake: 0, steer: 0, hand: false, nos: false }, lastUi: 0, rev: 0 };
+      const hqShop = G.content.shops.find((s) => s.id === "home"); const dadar = DISTRICTS.find((d) => d.id === "dadar");
+      const wrapA = (a) => { while (a > Math.PI) a -= Math.PI * 2; while (a < -Math.PI) a += Math.PI * 2; return a; };
+      function autopilot(P, throttle, nos) {
+        const n = city.world.city.nearestRoad(P.x, P.z, 80, null, P.y); let steer = 0;
+        if (n) { const r = n.road; const j = Math.min(r.pts.length - 1, n.i + 7); const a = r.pts[n.i], b = r.pts[j]; let yawT = Math.atan2(b.z - a.z, b.x - a.x); if (Math.cos(yawT - P.yaw) < 0) { const j2 = Math.max(0, n.i - 7); const bb = r.pts[j2]; yawT = Math.atan2(bb.z - a.z, bb.x - a.x); } steer = Math.max(-1, Math.min(1, wrapA(yawT - P.yaw) * 2.4)); }
+        return { throttle, brake: 0, steer, hand: false, nos: !!nos };
+      }
+      async function enterShot(i) {
+        ictl.shot = i; ictl.busy = true;
+        try {
+          const at = i === 1 ? dadar : (i === 0 || i === 2) ? hqShop : null;
+          if (at) { G.teleport(at.x, at.z); await view.preload(); }
+          const P = G.player; ictl.p0 = { x: P.x, y: P.y, z: P.z, yaw: P.yaw };
+        } catch (e) { console.error(e); }
+        ictl.busy = false;
+      }
+      function introFrame() {
+        const T = typeof window !== "undefined" && window.__introT != null ? window.__introT : Math.max(0, (performance.now() - ictl.t0) / 1000);
+        const sh = T < INTRO.CUTS[0] ? 0 : T < INTRO.CUTS[1] ? 1 : T < INTRO.CUTS[2] ? 2 : 3;
+        if (sh !== ictl.shot && !ictl.busy) enterShot(sh);
+        const P = G.player, p0 = ictl.p0 || { x: P.x, y: P.y, z: P.z, yaw: P.yaw };
+        G.traffic.length = 0; ictl.inp = { throttle: 0, brake: 0, steer: 0, hand: false, nos: false }; ictl.rev = 0.18;
+        const ts = (a) => T - a; let cam = null;
+        const cy = Math.cos(P.yaw), sy = Math.sin(P.yaw);
+        if (ictl.shot === 0) { const cy0 = Math.cos(p0.yaw), sy0 = Math.sin(p0.yaw); const f = -150 + 17 * T, s = 70 - 4.5 * T; cam = { x: p0.x + cy0 * f - sy0 * s, y: p0.y + 215 - 7 * T, z: p0.z + sy0 * f + cy0 * s, lx: p0.x + cy0 * (70 + 17 * T), ly: p0.y - 5, lz: p0.z + sy0 * (70 + 17 * T) }; }
+        else if (ictl.shot === 1) {
+          const t1 = ts(INTRO.CUTS[0]); ictl.inp = autopilot(P, 1, false); ictl.rev = 0.5 + Math.min(0.5, t1 * 0.12);
+          const cy0 = Math.cos(p0.yaw), sy0 = Math.sin(p0.yaw);
+          if (t1 < 3.9) cam = { x: p0.x + cy0 * 48 - sy0 * 3.4, y: p0.y + 1.25, z: p0.z + sy0 * 48 + cy0 * 3.4, lx: P.x + cy * 3, ly: P.y + 0.7, lz: P.z + sy * 3 };
+          else cam = { x: P.x - cy * 6.2 - sy * 2.2, y: P.y + 1.05, z: P.z - sy * 6.2 + cy * 2.2, lx: P.x + cy * 12, ly: P.y + 0.9, lz: P.z + sy * 12 };
+        } else if (ictl.shot === 2) {
+          const t2 = ts(INTRO.CUTS[1]); const a = p0.yaw + Math.PI * 0.85 - t2 * 0.36, r = 6.2 - t2 * 0.18;
+          cam = { x: P.x + Math.cos(a) * r, y: P.y + 1.15 + t2 * 0.1, z: P.z + Math.sin(a) * r, lx: P.x, ly: P.y + 0.55, lz: P.z };
+          ictl.rev = 0.18 + 0.78 * Math.max(0, Math.sin(Math.max(0, t2 - 3.2) * 1.9)) * (t2 > 3.2 ? 1 : 0); ictl.revThr = ictl.rev > 0.4;
+        } else if (ictl.shot === 3) {
+          const t3 = ts(INTRO.CUTS[2]); ictl.inp = autopilot(P, t3 > 0.25 ? 1 : 0, t3 > 0.9); ictl.rev = P.rpm;
+          const L = t3 < 2.4 ? 0 : t3 < 4.6 ? 1 : t3 < 7.4 ? 2 : 3;
+          if (L === 0) cam = { x: P.x - cy * (5 + t3 * 0.3) - sy * 0.5, y: P.y + 0.85, z: P.z - sy * (5 + t3 * 0.3) + cy * 0.5, lx: P.x + cy * 6, ly: P.y + 0.7, lz: P.z + sy * 6 };
+          else if (L === 1) cam = { x: P.x - sy * 3.3 + cy * 1.2, y: P.y + 0.5, z: P.z + cy * 3.3 + sy * 1.2, lx: P.x + cy * 0.6, ly: P.y + 0.45, lz: P.z + sy * 0.6 };
+          else if (L === 2) cam = { x: P.x + cy * 7.5 + sy * 2.6, y: P.y + 0.75, z: P.z + sy * 7.5 - cy * 2.6, lx: P.x, ly: P.y + 0.7, lz: P.z };
+          else cam = { x: P.x - cy * 12, y: P.y + 4.4, z: P.z - sy * 12, lx: P.x + cy * 10, ly: P.y + 0.8, lz: P.z + sy * 10 };
+        }
+        view.debugCam = cam;
+        const now = performance.now(); if (now - ictl.lastUi > 45) { ictl.lastUi = now; setIntro({ t: T, hold: ictl.busy }); }
+        if (T >= INTRO.END) endIntro();
+      }
+      async function startIntro() {
+        if (ictl.active || G.run) return;
+        ictl.saved = { player: G.player, pause: G.pause }; G.pause = false; setPaused(false); keys.current = {};
+        ictl.active = true; ictl.shot = -1; ictl.busy = true; ictl.p0 = null; ictl.t0 = performance.now() + 250;
+        setIntro({ t: 0, hold: true });
+        const m = musicRef && musicRef.current; if (m && m.duck) m.duck(true);
+        try { ictl.score = createIntroScore(isMuted); if (ictl.score) ictl.score.resume(); } catch {}
+        ictl.busy = false;
+      }
+      function endIntro() {
+        if (!ictl.active) return; ictl.active = false; view.debugCam = null;
+        if (ictl.score) { ictl.score.stop(0.5); ictl.score = null; }
+        const m = musicRef && musicRef.current; if (m && m.duck) m.duck(false);
+        if (ictl.saved) { G.player = ictl.saved.player; G.pause = false; G.traffic.length = 0; view.refreshPlayer(); view.setCameraMode(0); view.cam.snap = true; ictl.saved = null; }
+        G.career.introSeen = true; try { writeSave(G.career); } catch {}
+        setIntro(null);
+      }
+      introRef.current = { get active() { return ictl.active; }, start: startIntro, skip: endIntro };
+      if (wasFresh || introWant.current) { introWant.current = false; startIntro(); }
       const loop = (now) => {
         if (!alive) return; raf = requestAnimationFrame(loop);
         let dt = Math.min(0.1, (now - last) / 1000); last = now;
         const pausedNow = G.pause || G.state === "shop";
         let simSteps = 0;
-        if (!G.pause) { acc += dt; while (acc >= DT && simSteps < 6) { G.step(inputNow(), DT); acc -= DT; simSteps++; } if (acc > DT * 6) acc = 0; }
+        if (!G.pause) { acc += dt; while (acc >= DT && simSteps < 6) { G.step(ictl.active ? ictl.inp : inputNow(), DT); acc -= DT; simSteps++; } if (acc > DT * 6) acc = 0; }
+        if (ictl.active) introFrame();
         view.update(G.pause ? 0 : dt, simSteps ? DT : 0);
         const P1 = G.player;
-        if (eng) { const run = G.run; eng.set({ rpm: P1.rpm, nos: P1.nos, thr: !!inputNow().throttle && !pausedNow, shifting: P1.shiftT > 0, squeal: pausedNow ? 0 : (P1.drifting ? Math.min(1, P1.slip * 2) : P1.braking && P1.speed > 25 ? 0.5 : 0), v: pausedNow ? 0 : P1.speed, rain: G.weather.rain, car: G.career.car, cam: vref.current ? vref.current.cam.mode : 0, hit: pausedNow ? 0 : P1.hit, nm: !!G.nmFlash, tunnel: !!(P1.surfRoad && P1.surfRoad.tunnel), wetRoad: G.weather.rain > 0.3 }); }
+        if (eng) { const run = G.run; eng.set({ rpm: ictl.active ? Math.max(ictl.rev, P1.rpm * (ictl.shot === 1 || ictl.shot === 3 ? 1 : 0)) : P1.rpm, nos: P1.nos, thr: ictl.active ? (ictl.shot === 2 ? !!ictl.revThr : !!ictl.inp.throttle) : (!!inputNow().throttle && !pausedNow), shifting: P1.shiftT > 0, squeal: pausedNow ? 0 : (P1.drifting ? Math.min(1, P1.slip * 2) : P1.braking && P1.speed > 25 ? 0.5 : 0), v: pausedNow ? 0 : P1.speed, rain: G.weather.rain, car: G.career.car, cam: ictl.active ? 0 : (vref.current ? vref.current.cam.mode : 0), hit: pausedNow ? 0 : P1.hit, nm: !!G.nmFlash, tunnel: !!(P1.surfRoad && P1.surfRoad.tunnel), wetRoad: G.weather.rain > 0.3 }); }
         if (!mini || !mini.isConnected) { mini = miniRef.current; mctx = mini ? mini.getContext("2d") : null; }
         if (mctx && !G.pause) drawMinimap(mctx, mini.width, city.base, G);
         hudT -= dt;
@@ -180,7 +252,7 @@ function MidnightBurnCityInner({ onFinish, accentColor, onMood, onClassic, music
       };
       raf = requestAnimationFrame(loop);
     })();
-    return () => { alive = false; cancelAnimationFrame(raf); if (ro) ro.disconnect(); if (eng) eng.stop(); if (view) view.dispose(); if (G) { G.career.pos = { x: G.player.x, z: G.player.z, yaw: G.player.yaw }; writeSave(G.career); setSave(G.career); } gref.current = null; vref.current = null; };
+    return () => { alive = false; try { if (introRef.current && introRef.current.active) introRef.current.skip(); } catch {} cancelAnimationFrame(raf); if (ro) ro.disconnect(); if (eng) eng.stop(); if (view) view.dispose(); if (G) { G.career.pos = { x: G.player.x, z: G.player.z, yaw: G.player.yaw }; writeSave(G.career); setSave(G.career); } gref.current = null; vref.current = null; };
   }, [phase === "play" || phase === "playing"]); // eslint-disable-line
 
   // ---- keys ----------------------------------------------------------------------------------------------------------------------------
@@ -191,13 +263,13 @@ function MidnightBurnCityInner({ onFinish, accentColor, onMood, onClassic, music
       if (G && ["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", " ", "Tab"].includes(k)) e.preventDefault();
       if (!e.repeat) keys.current[k === "Shift" ? "Shift" : k] = true; if (e.key === "Shift") keys.current.Shift = true;
       if (!G) return;
+      if (introRef.current && introRef.current.active) { if (["Escape", "Enter", " ", "p"].includes(k)) introRef.current.skip(); return; }
       if (k === "p" || k === "Escape") { if (G.state === "shop") closeShop(); else if (G.state !== "result") togglePause(); }
       if (k === "m") { if (!G.pause) { setTab("map"); togglePause(true); } else if (tabRef.current === "map") togglePause(false); else setTab("map"); }
       if (k === "Enter") { if (G.pause || G.state === "result") { if (G.state === "result") closeResult(); return; } if (G.state === "roam") { if (G.shopNear) openShop(); else if (G.near) G.startNear(); } }
       if (k === "c") { const v = vref.current; if (v) { v.cam.mode = (v.cam.mode + 1) % 4; v.setCameraMode(v.cam.mode); setCamLabel(["CHASE", "FAR", "HOOD", "COCKPIT"][v.cam.mode]); } }
       if (k === "r" && !G.pause && G.state !== "result") G.reset();
       if (k === "f") stage.toggle();
-      if (k === "f") { stage.toggle(); }
       if (k === "n") { musicRef && musicRef.current && musicRef.current.next(); }
       if (k === "x" && G.run && G.state === "event") { G.abortEvent(); }
       if (k === "g" && !G.pause && G.near) { G.setWaypoint(G.near.sx, G.near.sz, G.near.name); }
@@ -261,6 +333,7 @@ function MidnightBurnCityInner({ onFinish, accentColor, onMood, onClassic, music
             </div>
             <div className="flex gap-3 justify-center mt-4">
               <Btn onClick={() => begin(false)} color={accent}>CONTINUE ▸</Btn>
+              <Btn small color="#c7a6ff" onClick={() => { introWant.current = true; begin(false); }}>▶ WATCH INTRO</Btn>
               <Btn small color="#9fd4ff" onClick={() => { if (!submitted.current) { submitted.current = true; let s = 0; for (const d of Object.values(save.done || {})) s += d.pts || 0; s += (save.stash || []).length * 30 + (save.sights || []).length * 120 + Math.floor((save.odo || 0) / 1000) * 5 + Math.floor(save.nearMiss || 0) * 4; onFinish(Math.round(s)); } }}>SUBMIT CAREER SCORE</Btn>
             </div>
           </div>
@@ -319,10 +392,11 @@ function MidnightBurnCityInner({ onFinish, accentColor, onMood, onClassic, music
       )}
       {failed && <div className="absolute inset-0 flex items-center justify-center text-center p-6 bg-black"><div><p className="font-mono text-xs text-accentMagenta mb-4">3D graphics aren't available in this browser. Try Chrome, Edge or Firefox with hardware acceleration on.</p><Btn small onClick={() => quit(false)}>BACK</Btn></div></div>}
       {playing && radioNote && !shop && <div className="absolute pointer-events-none text-center" style={{ left: 0, right: 0, bottom: 150, textShadow: "0 0 8px #000" }}><p className="font-pixel text-[10px]" style={{ color: accent }}>♪ {radioNote.name}</p><p className="font-mono text-[10px] text-white/70">{radioNote.tag}</p></div>}
-      {playing && hud && !shop && <Hud hud={hud} accent={accent} miniRef={miniRef} camLabel={camLabel} muted={muted} G={G} onPause={() => togglePause(true)} paused={paused} />}
+      {playing && hud && !shop && !intro && <Hud hud={hud} accent={accent} miniRef={miniRef} camLabel={camLabel} muted={muted} G={G} onPause={() => togglePause(true)} paused={paused} />}
       {playing && hud && hud.result && <ResultCard res={hud.result} accent={accent} onClose={closeResult} />}
       {playing && shop && G && <ShopPanel key={tick} G={G} shop={shop} draft={draft} setDraft={setDraft} onClose={closeShop} accent={accent} refresh={() => { setTick((t) => t + 1); vref.current && vref.current.refreshPlayer(); }} onQuit={() => quit(true)} />}
-      {playing && paused && G && <PausePanel G={G} tab={tab} setTab={setTab} sel={sel} setSel={setSel} evFilter={evFilter} setEvFilter={setEvFilter} accent={accent} onResume={() => togglePause(false)} onQuit={quit} muted={muted} onMute={() => setMutedState(toggleMuted())} />}
+      {playing && intro && <MidnightBurnIntro t={intro.t} hold={intro.hold} era={ERA} carName={(G && G.career && G.career.car) || ""} onSkip={() => introRef.current && introRef.current.skip()} />}
+      {playing && paused && !intro && G && <PausePanel G={G} tab={tab} setTab={setTab} sel={sel} setSel={setSel} evFilter={evFilter} setEvFilter={setEvFilter} accent={accent} onResume={() => togglePause(false)} onQuit={quit} muted={muted} onMute={() => setMutedState(toggleMuted())} onIntro={() => { const G2 = gref.current; if (G2 && !G2.run && introRef.current) { G2.pause = false; setPaused(false); introRef.current.start(); } }} canIntro={!(G && G.run)} />}
     </div>
   );
   return <div>{frame}</div>;
@@ -464,7 +538,7 @@ function ShopPanel({ G, shop, draft, setDraft, onClose, accent, refresh, onQuit 
 }
 
 // =============================== PAUSE: map, events, career ============================================================================
-function PausePanel({ G, tab, setTab, sel, setSel, evFilter, setEvFilter, accent, onResume, onQuit, muted, onMute }) {
+function PausePanel({ G, tab, setTab, sel, setSel, evFilter, setEvFilter, accent, onResume, onQuit, muted, onMute, onIntro, canIntro }) {
   const stage = useStage();
   const tabs = [["map", "MAP"], ["events", "EVENTS"], ["career", "CAREER"], ["options", "OPTIONS"]];
   return (
@@ -472,7 +546,7 @@ function PausePanel({ G, tab, setTab, sel, setSel, evFilter, setEvFilter, accent
       <div className="flex items-center gap-2 px-4 py-2 border-b border-lineColor">
         <p className="font-pixel text-[11px] mr-3" style={{ color: accent }}>PAUSED</p>
         {tabs.map(([k, l]) => <button key={k} onClick={() => { setTab(k); sfx.tap(); }} className="font-pixel text-[9px] px-3 py-1.5 rounded" style={{ background: tab === k ? accent : "transparent", color: tab === k ? "#07070f" : "#aab" }}>{l}</button>)}
-        <div className="flex-1" /><Btn small color="#9fd0ff" onClick={() => stage.toggle()}>{stage.isFull ? "EXIT FULLSCREEN" : "⛶ FULLSCREEN"}</Btn><Btn small color="#6bff9a" onClick={onResume}>RESUME (P)</Btn>
+        <div className="flex-1" /><Btn small color="#9fd0ff" onClick={() => stage.toggle()}>{stage.isFull ? "EXIT FULLSCREEN" : "⛶ FULLSCREEN"}</Btn><Btn small color="#c7a6ff" disabled={!canIntro} onClick={onIntro}>▶ WATCH INTRO</Btn><Btn small color="#6bff9a" onClick={onResume}>RESUME (P)</Btn>
       </div>
       <div className="flex-1 min-h-0 overflow-hidden">
         {tab === "map" && <MapTab G={G} sel={sel} setSel={setSel} accent={accent} onResume={onResume} />}
