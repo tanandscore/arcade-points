@@ -7,19 +7,19 @@ const YEAR = new Date().getFullYear();
 // — nothing can — but it's genuine, standard, and worth having.
 export default function SiteFooter() {
   return (
-    <footer className="w-full py-6 px-4 text-center border-t border-lineColor/40 mt-auto">
-      <nav className="flex flex-wrap justify-center gap-x-4 gap-y-1 mb-3 font-mono text-[10px] text-textDim">
-        <a href="/pricing" className="hover:text-textLight underline">Pricing</a>
-        <a href="/tournaments" className="hover:text-textLight underline">Tournaments</a>
-        <a href="/about" className="hover:text-textLight underline">About</a>
-        <a href="/terms" className="hover:text-textLight underline">Terms</a>
-        <a href="/refund-policy" className="hover:text-textLight underline">Refund Policy</a>
-        <a href="/privacy" className="hover:text-textLight underline">Privacy</a>
+    <footer className="w-full py-6 px-4 text-center border-t border-lineColor/40 mt-auto bg-bgDeep">
+      <nav className="flex flex-wrap justify-center gap-x-4 gap-y-1 mb-3 font-mono text-[10px] text-textLight/70">
+        <a href="/pricing" className="hover:text-accentCyan underline">Pricing</a>
+        <a href="/tournaments" className="hover:text-accentCyan underline">Tournaments</a>
+        <a href="/about" className="hover:text-accentCyan underline">About</a>
+        <a href="/terms" className="hover:text-accentCyan underline">Terms</a>
+        <a href="/refund-policy" className="hover:text-accentCyan underline">Refund Policy</a>
+        <a href="/privacy" className="hover:text-accentCyan underline">Privacy</a>
       </nav>
-      <p className="font-mono text-[10px] text-textDim">
+      <p className="font-mono text-[10px] text-textLight/70">
         © {YEAR} Tap & Score. All rights reserved.
       </p>
-      <p className="font-mono text-[10px] text-textDim mt-1 max-w-xl mx-auto leading-relaxed">
+      <p className="font-mono text-[10px] text-textLight/70 mt-1 max-w-xl mx-auto leading-relaxed">
         Tap & Score is an independent entertainment platform. Individual games may draw creative inspiration from
         genres and styles associated with other media, but Tap & Score is not affiliated with, endorsed by, or
         sponsored by any third-party game, studio, or franchise.
