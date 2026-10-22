@@ -7,7 +7,7 @@ handles cards, wallets, tax and payouts). Follow these steps in order. Total tim
 minutes. You will only ever copy/paste — no terminal commands needed....
 
 ---
-
+........
 ## Step 1 — Put the code on GitHub
 
 1. Go to [github.com](https://github.com) and create a free account if you don't have one.
