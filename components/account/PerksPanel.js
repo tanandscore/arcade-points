@@ -16,15 +16,22 @@ export default function PerksPanel({ isSubscriber, currentAvatarId, currentTheme
   async function save(field, value, setter) {
     setSaving(field);
     setError("");
-    const res = await fetch("/api/account/perks", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ [field]: value }),
-    });
-    const data = await res.json();
+    let res, data = {};
+    try {
+      res = await fetch("/api/account/perks", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ [field]: value }),
+      });
+      data = await res.json().catch(() => ({}));
+    } catch (e) {
+      setSaving(null);
+      setError("Couldn't reach the server — check your connection and try again.");
+      return;
+    }
     setSaving(null);
     if (!res.ok) {
-      setError(data.error || "Couldn't save.");
+      setError(data.error || `Couldn't save (error ${res.status}).`);
       return;
     }
     setter(value);
