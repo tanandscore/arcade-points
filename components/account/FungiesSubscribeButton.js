@@ -51,10 +51,10 @@ export default function FungiesSubscribeButton({
   return (
     <div className="flex flex-col gap-2">
       <div className="flex gap-2">
-        <a href={withFields(fungiesCheckoutUrlMonthly, userId, planId) || undefined} className={fungiesCheckoutUrlMonthly ? cls : off} style={{ background: "#3ee6e0" }}>
+        <a target="_blank" rel="noopener" href={withFields(fungiesCheckoutUrlMonthly, userId, planId) || undefined} className={fungiesCheckoutUrlMonthly ? cls : off} style={{ background: "#3ee6e0" }}>
           {priceDisplayMonthly || ""}/MO ▸
         </a>
-        <a href={withFields(fungiesCheckoutUrlAnnual, userId, planId) || undefined} className={fungiesCheckoutUrlAnnual ? cls : off} style={{ background: "#3ee6e0" }}>
+        <a target="_blank" rel="noopener" href={withFields(fungiesCheckoutUrlAnnual, userId, planId) || undefined} className={fungiesCheckoutUrlAnnual ? cls : off} style={{ background: "#3ee6e0" }}>
           {priceDisplayAnnual || ""}/YR ▸
         </a>
       </div>
