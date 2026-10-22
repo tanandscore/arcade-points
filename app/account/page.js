@@ -120,7 +120,16 @@ export default async function AccountPage({ searchParams }) {
             <div key={tier.id} className="mt-8">
               <h2 className="font-pixel text-[10px] text-accentAmber mb-3">{tier.name.toUpperCase()} ACCESS</h2>
               {hasActiveSub ? (
-                <SubscriptionBox subscription={sub} planId={tier.id} planName={tier.name} />
+                <SubscriptionBox
+                  subscription={sub}
+                  planId={tier.id}
+                  planName={tier.name}
+                  userId={user.id}
+                  fungiesCheckoutUrlMonthly={tier.fungiesCheckoutUrlMonthly}
+                  fungiesCheckoutUrlAnnual={tier.fungiesCheckoutUrlAnnual}
+                  priceDisplayMonthly={tier.fungiesPriceDisplayMonthly}
+                  priceDisplayAnnual={tier.fungiesPriceDisplayAnnual}
+                />
               ) : bonusAppliesHere ? (
                 <div className="rounded-xl border border-accentCyan p-6 bg-bgPanel">
                   <p className="text-textDim text-xs mb-1">You have temporary {tier.name} access.</p>
