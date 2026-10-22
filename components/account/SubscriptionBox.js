@@ -2,8 +2,9 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import FungiesSubscribeButton from "@/components/account/FungiesSubscribeButton";
 
-export default function SubscriptionBox({ subscription, planId, planName }) {
+export default function SubscriptionBox({ subscription, planId, planName, userId, fungiesCheckoutUrlMonthly, fungiesCheckoutUrlAnnual, priceDisplayMonthly, priceDisplayAnnual }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [confirming, setConfirming] = useState(false);
@@ -60,7 +61,16 @@ export default function SubscriptionBox({ subscription, planId, planName }) {
               You still have full access until <span className="text-textLight">{periodEndLabel}</span>.
             </p>
           )}
-          <p className="text-textDim text-[11px]">Want to keep {planName || "Power Pass"}? Just subscribe again before that date.</p>
+          <p className="text-textDim text-[11px] mb-3">Want to keep {planName || "Power Pass"}? Renew below. Your new plan starts when you pay, and your current access stays until then.</p>
+          <FungiesSubscribeButton
+            fungiesCheckoutUrlMonthly={fungiesCheckoutUrlMonthly}
+            fungiesCheckoutUrlAnnual={fungiesCheckoutUrlAnnual}
+            priceDisplayMonthly={priceDisplayMonthly}
+            priceDisplayAnnual={priceDisplayAnnual}
+            planId={planId}
+            planName={planName}
+            userId={userId}
+          />
         </>
       ) : (
         <>
