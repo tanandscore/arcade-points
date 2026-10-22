@@ -198,6 +198,7 @@ export default async function AccountPage({ searchParams }) {
           </p>
           <PerksPanel
             isSubscriber={isSubscriber}
+            username={profile?.username}
             currentAvatarId={profile?.avatar_id}
             currentThemeId={profile?.theme_id}
             currentBadgeId={profile?.cosmetic_badge}
