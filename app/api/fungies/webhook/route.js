@@ -62,16 +62,29 @@ export async function POST(request) {
     let planId = itemWithFields?.customFields?.plan_id;
     // Do not just trust the plan name that came with the link (a shopper could edit it): work out the plan from the
     // Fungies offer that was really paid for, by matching its id against our saved checkout links.
+    let priceLabel = null;
     try {
       const paid = JSON.stringify(data?.items || []).toLowerCase();
-      const { data: plans } = await supabase.from("subscription_plans").select("id, fungies_checkout_url_monthly, fungies_checkout_url_annual");
+      const { data: plans } = await supabase.from("subscription_plans").select("id, fungies_checkout_url_monthly, fungies_checkout_url_annual, fungies_price_display_monthly, fungies_price_display_annual");
       for (const pl of plans || []) {
-        for (const u of [pl.fungies_checkout_url_monthly, pl.fungies_checkout_url_annual]) {
+        for (const [u, price, per] of [[pl.fungies_checkout_url_monthly, pl.fungies_price_display_monthly, "month"], [pl.fungies_checkout_url_annual, pl.fungies_price_display_annual, "year"]]) {
           const m = u && String(u).match(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i);
-          if (m && paid.includes(m[0].toLowerCase())) { planId = pl.id; }
+          if (m && paid.includes(m[0].toLowerCase())) { planId = pl.id; priceLabel = price ? `${price} / ${per}` : null; }
         }
       }
     } catch { /* keep the plan name from the link */ }
+
+    // Remember this payment for the Account page's Billing history. Never allowed to break the webhook itself.
+    if (userId && planId) {
+      try {
+        const payId = String(data?.orderId || data?.order?.id || data?.paymentId || data?.id || "") || null;
+        const row = { user_id: userId, plan_id: planId, price_label: priceLabel, provider: "fungies", provider_payment_id: payId, paid_at: new Date().toISOString() };
+        const { error: histErr } = payId
+          ? await supabase.from("payment_history").upsert(row, { onConflict: "provider,provider_payment_id", ignoreDuplicates: true })
+          : await supabase.from("payment_history").insert(row);
+        if (histErr) console.error("payment_history:", histErr.message);
+      } catch (e) { console.error("payment_history:", e?.message); }
+    }
 
     if (!subscriptionId) {
       // A one-time purchase (day-pass/onetime game), not a
