@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { createServerSupabase } from "@/lib/supabaseServer";
+import { createServerSupabase, createServiceSupabase } from "@/lib/supabaseServer";
 import { hasAnySubscription } from "@/lib/access";
 import { AVATARS } from "@/lib/avatars";
 import { THEMES } from "@/lib/themes";
@@ -46,9 +46,14 @@ export async function PATCH(request) {
     return NextResponse.json({ error: "No valid fields to update." }, { status: 400 });
   }
 
-  const { error } = await supabase.from("profiles").update(updates).eq("id", user.id);
+  // Service client: the ordinary signed-in client is not allowed to edit profile rows directly (same reason the username route uses it).
+  // Safe because only the three validated fields above can ever be written.
+  const { data: saved, error } = await createServiceSupabase().from("profiles").update(updates).eq("id", user.id).select("id");
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+  if (!saved || saved.length === 0) {
+    return NextResponse.json({ error: "Couldn't find your profile to save this." }, { status: 404 });
   }
   return NextResponse.json({ success: true });
 }
