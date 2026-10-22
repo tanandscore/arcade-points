@@ -46,7 +46,8 @@ export async function POST(request) {
   try {
     await cancelFungiesSubscription(sub.fungies_subscription_id);
   } catch (err) {
-    return NextResponse.json({ error: "Couldn't reach Fungies to cancel — please try again shortly." }, { status: 502 });
+    // Show Fungies' own reason (e.g. "Fungies API error (401)") so a wrong key or wrong address can be spotted at once.
+    return NextResponse.json({ error: "Couldn't cancel with Fungies — " + (err && err.message ? err.message : "no reason given") + ". Please try again shortly." }, { status: 502 });
   }
 
   const service = createServiceSupabase();
