@@ -8,7 +8,12 @@
   --bg-deep: #12092b;
 }
 
+html {
+  background-color: #12092b;
+}
+
 body {
+  background-color: #12092b;
   background: radial-gradient(circle at 50% 0%, #1d1046 0%, #12092b 55%);
   color: #f5f0ff;
   font-family: 'Space Grotesk', sans-serif;
