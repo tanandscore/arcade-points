@@ -89,31 +89,36 @@ export async function POST(request) {
     // Fetch the authoritative subscription state rather than trusting
     // webhook payload shape for period-end/cancel-at-period-end,
     // per Fungies' own guidance.
-    let subscription;
-    try {
-      subscription = await getFungiesSubscription(subscriptionId);
-    } catch (err) {
-      // Fungies' API was unreachable/erroring — fail loudly (non-2xx)
-      // so Fungies retries this delivery, rather than silently
-      // writing an incomplete row.
-      return NextResponse.json({ error: "Could not verify subscription with Fungies." }, { status: 502 });
-    }
+    // The message itself carries the subscription (status, period end...) and is signed by Fungies, so it is trusted.
+    // Asking Fungies for the latest copy is a bonus: if that lookup fails or has different field names, use the message.
+    const fromMsg = data?.subscription || {};
+    let fresh = null;
+    try { fresh = await getFungiesSubscription(subscriptionId); } catch { fresh = null; }
+    const pick = (...vals) => vals.find((v) => v !== undefined && v !== null && v !== "");
+    const rawStatus = String(pick(fresh?.status, fromMsg.status, "active")).toLowerCase(); // e.g. "active", "incomplete", "cancelled"
+    const status = rawStatus === "incomplete" ? "past_due" : rawStatus === "canceled" ? "cancelled" : rawStatus;
+    const endRaw = pick(fresh?.currentPeriodEnd, fresh?.currentIntervalEnd, fromMsg.currentPeriodEnd, fromMsg.currentIntervalEnd);
+    let periodEnd = null;
+    if (endRaw !== undefined) { const d = typeof endRaw === "number" ? new Date(endRaw > 1e12 ? endRaw : endRaw * 1000) : new Date(endRaw); if (!isNaN(d.getTime())) periodEnd = d.toISOString(); }
+    const cancelAtEnd = !!pick(fresh?.cancelAtPeriodEnd, fresh?.cancelAtIntervalEnd, fromMsg.cancelAtPeriodEnd, fromMsg.cancelAtIntervalEnd, false);
 
-    const rawStatus = subscription?.status; // e.g. "active", "incomplete", "cancelled"
-    const status = rawStatus === "incomplete" ? "past_due" : rawStatus;
-
-    await supabase.from("subscriptions").upsert({
+    const { error: upErr } = await supabase.from("subscriptions").upsert({
       user_id: userId,
       plan_id: planId,
       status,
       provider: "fungies",
       fungies_subscription_id: subscriptionId,
       fungies_customer_id: fungiesCustomerId,
-      current_period_end: subscription?.currentPeriodEnd || null,
-      cancel_at_period_end: subscription?.cancelAtPeriodEnd ?? false,
+      current_period_end: periodEnd,
+      cancel_at_period_end: cancelAtEnd,
       updated_at: new Date().toISOString(),
     });
-    await supabase.from("profiles").update({ is_premium: status === "active" }).eq("id", userId);
+    if (upErr) {
+      // Say so loudly (Fungies shows this text in its delivery log, and retries) instead of pretending it worked.
+      return NextResponse.json({ error: "Could not save subscription: " + upErr.message }, { status: 500 });
+    }
+    const { error: profErr } = await supabase.from("profiles").update({ is_premium: status === "active" }).eq("id", userId);
+    if (profErr) return NextResponse.json({ error: "Could not update profile: " + profErr.message }, { status: 500 });
   } else if (
     eventType === "subscription_updated" ||
     eventType === "subscription_cancelled" ||
@@ -142,26 +147,28 @@ export async function POST(request) {
       return NextResponse.json({ received: true });
     }
 
-    let subscription;
-    try {
-      subscription = await getFungiesSubscription(subscriptionId);
-    } catch (err) {
-      return NextResponse.json({ error: "Could not verify subscription with Fungies." }, { status: 502 });
-    }
+    const fromMsg = data?.subscription || {};
+    let fresh = null;
+    try { fresh = await getFungiesSubscription(subscriptionId); } catch { fresh = null; }
+    const pick = (...vals) => vals.find((v) => v !== undefined && v !== null && v !== "");
+    const rawStatus = String(pick(fresh?.status, fromMsg.status, "active")).toLowerCase();
+    const status = rawStatus === "incomplete" ? "past_due" : rawStatus === "canceled" ? "cancelled" : rawStatus;
+    const endRaw = pick(fresh?.currentPeriodEnd, fresh?.currentIntervalEnd, fromMsg.currentPeriodEnd, fromMsg.currentIntervalEnd);
+    let periodEnd = null;
+    if (endRaw !== undefined) { const d = typeof endRaw === "number" ? new Date(endRaw > 1e12 ? endRaw : endRaw * 1000) : new Date(endRaw); if (!isNaN(d.getTime())) periodEnd = d.toISOString(); }
+    const cancelAtEnd = !!pick(fresh?.cancelAtPeriodEnd, fresh?.cancelAtIntervalEnd, fromMsg.cancelAtPeriodEnd, fromMsg.cancelAtIntervalEnd, false);
 
-    const rawStatus = subscription?.status;
-    const status = rawStatus === "incomplete" ? "past_due" : rawStatus;
-
-    await supabase
+    const { error: updErr } = await supabase
       .from("subscriptions")
       .update({
         status,
-        current_period_end: subscription?.currentPeriodEnd || null,
-        cancel_at_period_end: subscription?.cancelAtPeriodEnd ?? false,
+        current_period_end: periodEnd,
+        cancel_at_period_end: cancelAtEnd,
         updated_at: new Date().toISOString(),
       })
       .eq("fungies_subscription_id", subscriptionId)
       .eq("provider", "fungies");
+    if (updErr) return NextResponse.json({ error: "Could not update subscription: " + updErr.message }, { status: 500 });
 
     await supabase
       .from("profiles")
