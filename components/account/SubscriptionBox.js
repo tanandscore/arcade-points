@@ -21,7 +21,8 @@ export default function SubscriptionBox({ subscription, planId, planName }) {
   // Fungies adds a real portal-session API later, this is the one
   // place to wire it in.
   function handleManageBilling() {
-    const storeUrl = process.env.NEXT_PUBLIC_FUNGIES_STORE_URL;
+    // Falls back to the real store address so this works even if the build did not receive the setting.
+    const storeUrl = process.env.NEXT_PUBLIC_FUNGIES_STORE_URL || "https://tapandscore.app.fungies.io";
     if (!storeUrl) {
       setError("Billing portal isn't configured yet — missing NEXT_PUBLIC_FUNGIES_STORE_URL.");
       return;
