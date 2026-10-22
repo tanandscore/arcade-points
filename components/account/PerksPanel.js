@@ -2,11 +2,11 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { AVATARS } from "@/lib/avatars";
-import { THEMES } from "@/lib/themes";
-import { COSMETIC_BADGES } from "@/lib/cosmetics";
+import { AVATARS, getAvatar } from "@/lib/avatars";
+import { THEMES, getTheme } from "@/lib/themes";
+import { COSMETIC_BADGES, getCosmeticBadge } from "@/lib/cosmetics";
 
-export default function PerksPanel({ isSubscriber, currentAvatarId, currentThemeId, currentBadgeId }) {
+export default function PerksPanel({ isSubscriber, currentAvatarId, currentThemeId, currentBadgeId, username }) {
   const [avatarId, setAvatarId] = useState(currentAvatarId || null);
   const [themeId, setThemeId] = useState(currentThemeId || "default");
   const [badgeId, setBadgeId] = useState(currentBadgeId || null);
@@ -53,6 +53,34 @@ export default function PerksPanel({ isSubscriber, currentAvatarId, currentTheme
   return (
     <div className="space-y-6">
       {error && <p className="text-accentMagenta text-xs">{error}</p>}
+
+      {(() => {
+        const av = getAvatar(avatarId);
+        const th = getTheme(themeId);
+        const bd = getCosmeticBadge(badgeId);
+        return (
+          <div className="rounded-xl p-4 bg-bgPanel" style={{ border: `2px solid ${th.accent}`, boxShadow: `0 0 24px ${th.glow}` }}>
+            <p className="font-mono text-[10px] text-textDim uppercase tracking-wide mb-3">Your look — this is how others see you</p>
+            <div className="flex items-center gap-3">
+              <div className="w-14 h-14 rounded-full flex items-center justify-center text-3xl bg-bgPanel3 border" style={{ borderColor: av ? av.color : "rgba(169,159,214,0.3)" }}>
+                {av ? <span className={av.animationClass} style={{ color: av.color }}>{av.icon}</span> : <span className="text-textDim text-xs">?</span>}
+              </div>
+              <div>
+                <p className="font-pixel text-[10px] text-textLight mb-1">{username || "YOU"}</p>
+                <div className="flex flex-wrap gap-2 items-center">
+                  <span className="font-mono text-[10px] px-2 py-0.5 rounded-full border" style={{ borderColor: th.accent, color: th.accent }}>{th.name} theme</span>
+                  {bd && <span className="font-mono text-[10px] text-textLight">{bd.icon} {bd.label}</span>}
+                </div>
+              </div>
+            </div>
+            {username && (
+              <Link href={`/players/${encodeURIComponent(username)}`} className="inline-block mt-3 font-mono text-[10px] text-accentCyan underline">
+                See it on my public profile ▸
+              </Link>
+            )}
+          </div>
+        );
+      })()}
 
       <div>
         <p className="font-mono text-[10px] text-textDim uppercase tracking-wide mb-2">Animated Avatar</p>
