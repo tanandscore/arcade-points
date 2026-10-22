@@ -10,6 +10,7 @@ import DeleteAccountSection from "@/components/account/DeleteAccountSection";
 import SubscriptionBox from "@/components/account/SubscriptionBox";
 import FungiesSubscribeButton from "@/components/account/FungiesSubscribeButton";
 import PurchaseHistory from "@/components/account/PurchaseHistory";
+import BillingHistory from "@/components/account/BillingHistory";
 import Navbar from "@/components/Navbar";
 import AchievementsPanel from "@/components/AchievementsPanel";
 import PerksPanel from "@/components/account/PerksPanel";
@@ -29,7 +30,7 @@ export default async function AccountPage({ searchParams }) {
   } = await supabase.auth.getUser();
   if (!user) redirect("/login");
 
-  const [{ data: profile }, { data: subscriptions }, { data: purchases }, games] = await Promise.all([
+  const [{ data: profile }, { data: subscriptions }, { data: purchases }, games, { data: payments }] = await Promise.all([
     supabase
       .from("profiles")
       .select("username, country, is_admin, is_premium, referral_code, bonus_subscription_until, platform_xp, lifetime_points, avatar_id, theme_id, cosmetic_badge, streak_email_opt_out")
@@ -41,6 +42,7 @@ export default async function AccountPage({ searchParams }) {
       .eq("user_id", user.id),
     supabase.from("purchases").select("game, purchased_at").eq("user_id", user.id),
     getGames(),
+    supabase.from("payment_history").select("id, plan_id, price_label, paid_at").eq("user_id", user.id).order("paid_at", { ascending: false }).limit(50),
   ]);
   const admin = profile?.is_admin || (await isAdmin(supabase, user.id));
 
@@ -48,6 +50,9 @@ export default async function AccountPage({ searchParams }) {
     ...p,
     gameName: games.find((g) => g.slug === p.game)?.name || p.game,
   }));
+
+  const planNames = { premium: "Power Pass", premium_plus: "Legend Pass" };
+  const paymentsWithNames = (payments || []).map((p) => ({ ...p, planName: planNames[p.plan_id] || p.plan_id || "Subscription" }));
 
   const bonusActive = profile?.bonus_subscription_until && new Date(profile.bonus_subscription_until) > new Date();
   // Admins get every subscriber perk (avatars, themes, cosmetics)
@@ -212,6 +217,8 @@ export default async function AccountPage({ searchParams }) {
         <div className="mt-8">
           <h2 className="font-pixel text-[10px] text-accentAmber mb-3">YOUR PURCHASES</h2>
           <PurchaseHistory purchases={purchasesWithNames} />
+          <h2 className="font-pixel text-[10px] text-accentAmber mt-8 mb-3">BILLING HISTORY</h2>
+          <BillingHistory payments={paymentsWithNames} />
         </div>
 
         <div className="mt-8">
