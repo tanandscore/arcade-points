@@ -1,6 +1,5 @@
 "use client";
 
-import Script from "next/script";
 
 // Fungies is the site's only payment provider. Its documented React pattern is a vendor <script> with data-auto-init
 // that scans the DOM for elements carrying
@@ -31,6 +30,13 @@ import Script from "next/script";
 // clicking each button actually opens the overlay and that a test
 // payment fires payment_success with the custom fields attached,
 // before relying on this in production.
+// Upgrade 46: the pop-up (overlay) mode was refused by Fungies' store ("refused to connect"), so the buttons now simply open
+// Fungies' own checkout page, with our user_id and plan_id added to the link (Fungies' documented "prefilled custom fields" links).
+const withFields = (url, userId, planId) => {
+  if (!url) return "";
+  const u = new URL(url); u.searchParams.set("user_id", userId || ""); u.searchParams.set("plan_id", planId || ""); return u.toString();
+};
+
 export default function FungiesSubscribeButton({
   fungiesCheckoutUrlMonthly,
   fungiesCheckoutUrlAnnual,
@@ -40,40 +46,17 @@ export default function FungiesSubscribeButton({
   planName = "Power Pass",
   userId,
 }) {
-  const customFields = JSON.stringify({ user_id: userId, plan_id: planId });
-
+  const cls = "flex-1 rounded-md py-3 font-pixel text-[10px] text-bgDeep text-center";
+  const off = "flex-1 rounded-md py-3 font-pixel text-[10px] text-bgDeep text-center opacity-50 pointer-events-none";
   return (
     <div className="flex flex-col gap-2">
-      {/* Loaded once per page; data-auto-init scans for the buttons
-          below as soon as it runs, so it must load after they're
-          already in the DOM — true here since both render together. */}
-      <Script
-        id="fungies-checkout-script"
-        src="https://cdn.jsdelivr.net/npm/@fungies/fungies-js@0.0.6"
-        strategy="afterInteractive"
-        data-auto-init=""
-      />
       <div className="flex gap-2">
-        <button
-          data-fungies-checkout-url={fungiesCheckoutUrlMonthly}
-          data-fungies-custom-fields={customFields}
-          data-fungies-mode="overlay"
-          disabled={!fungiesCheckoutUrlMonthly}
-          className="flex-1 rounded-md py-3 font-pixel text-[10px] text-bgDeep disabled:opacity-50"
-          style={{ background: "#3ee6e0" }}
-        >
+        <a href={withFields(fungiesCheckoutUrlMonthly, userId, planId) || undefined} className={fungiesCheckoutUrlMonthly ? cls : off} style={{ background: "#3ee6e0" }}>
           {priceDisplayMonthly || ""}/MO ▸
-        </button>
-        <button
-          data-fungies-checkout-url={fungiesCheckoutUrlAnnual}
-          data-fungies-custom-fields={customFields}
-          data-fungies-mode="overlay"
-          disabled={!fungiesCheckoutUrlAnnual}
-          className="flex-1 rounded-md py-3 font-pixel text-[10px] text-bgDeep disabled:opacity-50"
-          style={{ background: "#3ee6e0" }}
-        >
+        </a>
+        <a href={withFields(fungiesCheckoutUrlAnnual, userId, planId) || undefined} className={fungiesCheckoutUrlAnnual ? cls : off} style={{ background: "#3ee6e0" }}>
           {priceDisplayAnnual || ""}/YR ▸
-        </button>
+        </a>
       </div>
       <p className="text-[10px] text-textDim">Payments processed securely via Fungies</p>
       {!fungiesCheckoutUrlMonthly && !fungiesCheckoutUrlAnnual && (
