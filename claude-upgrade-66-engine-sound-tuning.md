@@ -1,0 +1,5 @@
+# Upgrade 66 — Engine sound model and deep tuning (Midnight Burn)
+Sound: engineSynth.js (DSP: firing pulses per cylinder, two exhaust banks, pipe combs, silencer, firing-note body, intake gulp, valve tick, limiter, pops) runs in an AudioWorklet created from a Blob; engineAudio.js feeds it rpm/load/cut/pops and the car's fitted parts (tn). Fallback to old oscillator layers if the worklet cannot load. CAR_ENGINE maps each car to an engine type.
+Tuning: CITY_UPGRADES now 17 lines with groups (new: intake, exhaust, internals, ecu, clutch, springs, dampers, arb); SETUP sliders sFinal/sHeight/sBias/sWing/sCamber (-3..+3, free, G.setSetup). cityStats extended; stock numbers unchanged. Stock Kestrel rating 100; old max 175; all parts max 191.
+Tested: engine DSP in Node (peaks at firing frequency for 7 engine types, no NaN, parts raise level), worklet in Chromium OfflineAudioContext, stat maths, buying and sliders in the sim, bundles compile. Not tested by ear: the sound itself needs a listen on real speakers; shop UI not screenshot-tested.
+Files: engine/{engineSynth,engineAudio,physics}.js, engine/open/sim.js, MidnightBurnCity.js.
