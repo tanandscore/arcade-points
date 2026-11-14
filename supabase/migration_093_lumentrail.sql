@@ -1,4 +1,0 @@
--- Migration 093 (Upgrade 112): Lumen Trail (Power Pass turn-based RPG) goes live. Safe to run again.
-insert into public.games (slug, name, icon, category, accent_color, tagline, component_key, access_type, subscription_plan_id, price_paise, price_display, sort_order, is_active)
-values ('lumentrail', 'Lumen Trail', '🗡️', 'Role-playing', '#ffcf5a', 'Four travellers, one fallen star. Break shields, boost your party and fight your way north.', 'lumentrail', 'subscription', 'premium', null, null, 15, true)
-on conflict (slug) do update set name = excluded.name, icon = excluded.icon, category = excluded.category, accent_color = excluded.accent_color, tagline = excluded.tagline, component_key = excluded.component_key, access_type = excluded.access_type, subscription_plan_id = excluded.subscription_plan_id, sort_order = excluded.sort_order, is_active = excluded.is_active;
